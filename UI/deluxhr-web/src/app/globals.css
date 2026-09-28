@@ -1,0 +1,7 @@
+@import "tailwindcss";
+:root { --background:#F6F8FC; --foreground:#0F172A; --primary:#4F46E5; --primary-hover:#4338CA; --muted-foreground:#475569; --border:#E2E8F0; --approved:#16A34A; --rejected:#E11D48; --pending:#D97706; }
+html,body{background:var(--background);color:var(--foreground)}
+body{font-family:var(--font-inter),sans-serif;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+button,a{outline-color:#6366f1}
+::selection{background:#e0e7ff;color:#312e81}
