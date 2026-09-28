@@ -5,15 +5,40 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-app.enableCors({
-  origin: [
+  const allowedOrigins = [
+    // Local development
     'http://localhost:3001',
     'http://127.0.0.1:3001',
+
+    // Local network development
     'http://192.168.8.101:3001',
     'http://192.168.8.102:3001',
-  ],
-  credentials: true,
-});
+
+    // Render production/testing
+    'https://deluxhr-web.onrender.com',
+
+    // Permanent DeluxHR application
+    'https://app.deluxhr.co.za',
+  ];
+
+  app.enableCors({
+    origin: (origin, callback) => {
+      // Allow requests that do not originate from a browser,
+      // such as server-to-server requests and API tools.
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error(`Origin ${origin} is not allowed by CORS`), false);
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  });
 
   app.useGlobalPipes(
     new ValidationPipe({
