@@ -1,0 +1,9 @@
+BEGIN;
+UPDATE "PlatformPackage" SET "isActive" = true;
+INSERT INTO "PlatformPackage" ("id","code","name","features","isActive","createdAt","updatedAt") VALUES ('8e04806a-c097-453d-b38b-9bf9703fcd69','DELUX_CORE','Core HR',ARRAY['CORE_HR']::"Feature"[],true,NOW(),NOW()) ON CONFLICT ("code") DO NOTHING;
+INSERT INTO "PlatformPackage" ("id","code","name","features","isActive","createdAt","updatedAt") VALUES ('0693a496-d2c3-43c1-9911-2303e4abdd7d','DELUX_PEOPLE','Core HR + Leave',ARRAY['CORE_HR','LEAVE']::"Feature"[],true,NOW(),NOW()) ON CONFLICT ("code") DO NOTHING;
+INSERT INTO "PlatformPackage" ("id","code","name","features","isActive","createdAt","updatedAt") VALUES ('d058d5d5-2755-4a51-8324-a1b09bccecbd','DELUX_TIME','Core HR + Attendance & Timesheets',ARRAY['CORE_HR','ATTENDANCE','TIMESHEETS']::"Feature"[],true,NOW(),NOW()) ON CONFLICT ("code") DO NOTHING;
+INSERT INTO "PlatformPackage" ("id","code","name","features","isActive","createdAt","updatedAt") VALUES ('2ab3af66-7098-4a5e-8c8c-cf649cbe2513','DELUX_PAYROLL','Core HR + Payroll',ARRAY['CORE_HR','PAYROLL','PAYSLIPS']::"Feature"[],true,NOW(),NOW()) ON CONFLICT ("code") DO NOTHING;
+INSERT INTO "PlatformPackage" ("id","code","name","features","isActive","createdAt","updatedAt") VALUES ('d3c308bd-3024-4dbc-9241-f664f2071542','DELUX_ALL','Complete edition',ARRAY['CORE_HR','LEAVE','ATTENDANCE','TIMESHEETS','PAYROLL','PAYSLIPS','WHATSAPP','EARLY_PAY','WORKFORCE_INSIGHTS','EXECUTIVE_DASHBOARD']::"Feature"[],true,NOW(),NOW()) ON CONFLICT ("code") DO NOTHING;
+INSERT INTO "OrganizationFeature" ("id","organizationId","feature","enabled","enabledAt","createdAt","updatedAt") SELECT md5('core-default:' || "id"), "id", 'CORE_HR'::"Feature", true, NOW(), NOW(), NOW() FROM "Organization" ON CONFLICT ("organizationId","feature") DO UPDATE SET "enabled"=true,"disabledAt"=NULL,"updatedAt"=NOW();
+COMMIT;

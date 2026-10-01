@@ -7,6 +7,6 @@ import { SaTaxEngineService } from './tax-engine/sa-tax-engine.service';
 @Module({
   controllers: [PayrollController],
   providers: [PayrollService, PrismaService, SaTaxEngineService],
-  exports: [SaTaxEngineService],
+  exports: [PayrollService, SaTaxEngineService],
 })
 export class PayrollModule {}

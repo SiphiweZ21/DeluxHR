@@ -1,6 +1,17 @@
+import type { UserRole } from '@prisma/client';
+
 export type JwtUser = {
   sub: string;
   email: string;
+  organizationId: string | null;
+  role: UserRole;
+};
+
+export type TenantJwtUser = JwtUser & {
   organizationId: string;
-  role: 'OWNER' | 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
+};
+
+export type PlatformJwtUser = JwtUser & {
+  organizationId: null;
+  role: 'SUPER_ADMIN' | 'PLATFORM_ADMIN';
 };

@@ -1,9 +1,4 @@
-import {
-  IsDateString,
-  IsOptional,
-  IsString,
-  IsUUID,
-} from 'class-validator';
+import { IsDateString, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class CreatePayrollRunDto {
   @IsUUID()

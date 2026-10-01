@@ -30,7 +30,12 @@ export type SaTaxResult = {
   notes: string[];
 };
 
-type TaxBracket = { upTo: number | null; base: number; rate: number; excessOver: number };
+type TaxBracket = {
+  upTo: number | null;
+  base: number;
+  rate: number;
+  excessOver: number;
+};
 
 type TaxYearRules = {
   key: string;
@@ -81,11 +86,14 @@ export class SaTaxEngineService {
     const periodsPerYear = this.periodsPerYear(input.payFrequency);
     const notes: string[] = [];
 
-    const annualisedBeforeRetirement = Math.max(0, input.taxableRemuneration) * periodsPerYear;
-    const annualRetirementContribution = Math.max(
-      0,
-      (input.retirementEmployeeContribution ?? 0) + (input.retirementEmployerContribution ?? 0),
-    ) * periodsPerYear;
+    const annualisedBeforeRetirement =
+      Math.max(0, input.taxableRemuneration) * periodsPerYear;
+    const annualRetirementContribution =
+      Math.max(
+        0,
+        (input.retirementEmployeeContribution ?? 0) +
+          (input.retirementEmployerContribution ?? 0),
+      ) * periodsPerYear;
 
     // Stage 2 payroll implementation: retirement contributions are limited to 27.5%
     // of annualised remuneration/taxable income and R350,000 p.a. Unused/excess amounts
@@ -100,19 +108,27 @@ export class SaTaxEngineService {
       annualisedBeforeRetirement - annualRetirementDeductionUsed,
     );
 
-    const annualTaxBeforeRebates = this.annualTax(annualisedTaxableRemuneration, rules);
+    const annualTaxBeforeRebates = this.annualTax(
+      annualisedTaxableRemuneration,
+      rules,
+    );
     const age = this.ageAt(input.dateOfBirth ?? null, input.paymentDate);
     let annualRebate = rules.primaryRebate;
     if (age !== null && age >= 65) annualRebate += rules.secondaryRebate;
     if (age !== null && age >= 75) annualRebate += rules.tertiaryRebate;
-    if (age === null) notes.push('Date of birth not configured; primary rebate only was applied.');
+    if (age === null)
+      notes.push(
+        'Date of birth not configured; primary rebate only was applied.',
+      );
 
     const members = Math.max(0, Math.floor(input.medicalSchemeMembers ?? 0));
-    const monthlyMedicalCredit = members === 0
-      ? 0
-      : members === 1
-        ? rules.medicalFirstTwoMonthly
-        : rules.medicalFirstTwoMonthly * 2 + Math.max(0, members - 2) * rules.medicalAdditionalMonthly;
+    const monthlyMedicalCredit =
+      members === 0
+        ? 0
+        : members === 1
+          ? rules.medicalFirstTwoMonthly
+          : rules.medicalFirstTwoMonthly * 2 +
+            Math.max(0, members - 2) * rules.medicalAdditionalMonthly;
     const annualMedicalTaxCredit = monthlyMedicalCredit * 12;
 
     const annualTaxAfterCredits = Math.max(
@@ -123,13 +139,24 @@ export class SaTaxEngineService {
 
     // UIF ceiling is monthly. Convert it to the employee's configured pay frequency.
     const uifPeriodCeiling = (rules.uifMonthlyCeiling * 12) / periodsPerYear;
-    const uifBase = Math.min(Math.max(0, input.uifRemuneration), uifPeriodCeiling);
-    const uifEmployee = input.uifApplicable === false ? 0 : this.money(uifBase * rules.uifRate);
-    const uifEmployer = input.uifApplicable === false ? 0 : this.money(uifBase * rules.uifRate);
-    const sdlEmployer = input.sdlApplicable ? this.money(Math.max(0, input.sdlRemuneration) * rules.sdlRate) : 0;
+    const uifBase = Math.min(
+      Math.max(0, input.uifRemuneration),
+      uifPeriodCeiling,
+    );
+    const uifEmployee =
+      input.uifApplicable === false ? 0 : this.money(uifBase * rules.uifRate);
+    const uifEmployer =
+      input.uifApplicable === false ? 0 : this.money(uifBase * rules.uifRate);
+    const sdlEmployer = input.sdlApplicable
+      ? this.money(Math.max(0, input.sdlRemuneration) * rules.sdlRate)
+      : 0;
 
-    notes.push('PAYE uses annualised statutory rates for the selected pay frequency.');
-    notes.push('Variable remuneration, directives, YTD corrections and special fringe-benefit cases require additional payroll rules before production certification.');
+    notes.push(
+      'PAYE uses annualised statutory rates for the selected pay frequency.',
+    );
+    notes.push(
+      'Variable remuneration, directives, YTD corrections and special fringe-benefit cases require additional payroll rules before production certification.',
+    );
 
     return {
       taxYear: rules.key,
@@ -150,7 +177,9 @@ export class SaTaxEngineService {
   private resolveRules(paymentDate: Date): TaxYearRules {
     const iso = paymentDate.toISOString().slice(0, 10);
     if (iso >= RULES_2027.starts && iso <= RULES_2027.ends) return RULES_2027;
-    throw new Error(`No South African payroll tax rules configured for payment date ${iso}`);
+    throw new Error(
+      `No South African payroll tax rules configured for payment date ${iso}`,
+    );
   }
 
   private periodsPerYear(frequency: PayFrequency): number {
@@ -160,15 +189,23 @@ export class SaTaxEngineService {
   }
 
   private annualTax(income: number, rules: TaxYearRules): number {
-    const bracket = rules.brackets.find((b) => b.upTo === null || income <= b.upTo) ?? rules.brackets[rules.brackets.length - 1];
-    return bracket.base + Math.max(0, income - bracket.excessOver) * bracket.rate;
+    const bracket =
+      rules.brackets.find((b) => b.upTo === null || income <= b.upTo) ??
+      rules.brackets[rules.brackets.length - 1];
+    return (
+      bracket.base + Math.max(0, income - bracket.excessOver) * bracket.rate
+    );
   }
 
   private ageAt(dateOfBirth: Date | null, at: Date): number | null {
     if (!dateOfBirth) return null;
     let age = at.getUTCFullYear() - dateOfBirth.getUTCFullYear();
     const month = at.getUTCMonth() - dateOfBirth.getUTCMonth();
-    if (month < 0 || (month === 0 && at.getUTCDate() < dateOfBirth.getUTCDate())) age--;
+    if (
+      month < 0 ||
+      (month === 0 && at.getUTCDate() < dateOfBirth.getUTCDate())
+    )
+      age--;
     return Math.max(0, age);
   }
 

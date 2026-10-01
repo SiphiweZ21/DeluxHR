@@ -1,0 +1,65 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { assignShift, createRecurringSchedule, createShift, endRecurringSchedule, endShiftAssignment, getDepartments, getEmployees, getRecurringSchedules, getShiftAssignments, getShifts, setShiftActive, updateShift, type Department, type Employee, type NewShift, type RecurringSchedule, type ShiftAssignment, type ShiftDefinition } from '../../lib/api';
+
+const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const currentDate = () => new Date().toISOString().slice(0, 10);
+const emptyShift: NewShift = { code: '', name: '', startTime: '08:00', endTime: '17:00', unpaidBreakMinutes: 60 };
+const dateText = (date?: string | null) => date?.slice(0, 10) ?? 'Ongoing';
+type TargetKind = 'employee' | 'department';
+export default function ShiftsPage() {
+  const [shifts, setShifts] = useState<ShiftDefinition[]>([]);
+  const [assignments, setAssignments] = useState<ShiftAssignment[]>([]);
+  const [schedules, setSchedules] = useState<RecurringSchedule[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [draft, setDraft] = useState<NewShift>(emptyShift);
+  const [editing, setEditing] = useState('');
+  const [targetKind, setTargetKind] = useState<TargetKind>('department');
+  const [targetId, setTargetId] = useState('');
+  const [shiftId, setShiftId] = useState('');
+  const [from, setFrom] = useState(currentDate());
+  const [to, setTo] = useState('');
+  const [weekdays, setWeekdays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [graceIn, setGraceIn] = useState(0);
+  const [graceOut, setGraceOut] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  async function load() {
+    const [s, a, r, e, d] = await Promise.all([getShifts(), getShiftAssignments(), getRecurringSchedules(), getEmployees(), getDepartments()]);
+    setShifts(s); setAssignments(a); setSchedules(r); setEmployees(e); setDepartments(d);
+  }
+  useEffect(() => { let active = true; Promise.all([getShifts(), getShiftAssignments(), getRecurringSchedules(), getEmployees(), getDepartments()]).then(([s,a,r,e,d]) => { if (active) { setShifts(s); setAssignments(a); setSchedules(r); setEmployees(e); setDepartments(d); } }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'Unable to load shifts'); }).finally(() => { if (active) setLoading(false); }); return () => { active = false; }; }, []);
+  async function run(action: () => Promise<unknown>, success: string) {
+    setBusy(true); setError(''); setMessage('');
+    try { await action(); await load(); setMessage(success); return true; }
+    catch (e) { setError(e instanceof Error ? e.message : 'Action failed'); return false; }
+    finally { setBusy(false); }
+  }
+  async function saveShift(e: React.FormEvent) {
+    e.preventDefault();
+    const saved = await run(() => editing ? updateShift(editing, draft) : createShift(draft), editing ? 'Shift updated.' : 'Shift created.');
+    if (saved) { setEditing(''); setDraft(emptyShift); }
+  }
+  function edit(shift: ShiftDefinition) { setEditing(shift.id); setDraft({ code: shift.code, name: shift.name, startTime: shift.startTime, endTime: shift.endTime, unpaidBreakMinutes: shift.unpaidBreakMinutes }); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  const target = () => targetKind === 'employee' ? { employeeId: targetId } : { departmentId: targetId };
+  const effectiveTo = () => to || undefined;
+  const validTarget = !!targetId && !!shiftId && !!from && (!to || to > from);
+  const describe = (employeeId?: string | null, departmentId?: string | null) => employeeId ? `${employees.find(x => x.id === employeeId)?.firstName ?? ''} ${employees.find(x => x.id === employeeId)?.lastName ?? ''}`.trim() || employeeId : departments.find(x => x.id === departmentId)?.name ?? departmentId ?? 'Unknown';
+  async function closeAssignment(id: string, start: string) { const date = window.prompt('End date (YYYY-MM-DD; exclusive)', currentDate()); if (date && date > start.slice(0, 10)) await run(() => endShiftAssignment(id, date), 'Assignment ended.'); else if (date) setError('End date must be later than the start date.'); }
+  async function closeSchedule(id: string, start: string) { const date = window.prompt('End date (YYYY-MM-DD; exclusive)', currentDate()); if (date && date > start.slice(0, 10)) await run(() => endRecurringSchedule(id, date), 'Schedule ended.'); else if (date) setError('End date must be later than the start date.'); }
+  return <div className="space-y-6 pb-8">
+    <div><p className="text-xs font-bold uppercase tracking-widest text-indigo-600">Workforce time</p><h1 className="mt-2 text-3xl font-semibold text-slate-950">Shifts & schedules</h1><p className="mt-2 text-sm text-slate-600">Define shifts, assign them to an employee or department, and set weekly patterns.</p></div>
+    {error && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">{error}</p>}{message && <p role="status" className="rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">{message}</p>}
+    {loading ? <p>Loading shifts…</p> : <>
+      <section className="rounded-2xl border border-slate-200 bg-white p-5"><h2 className="text-lg font-semibold">Shift definitions</h2><form onSubmit={saveShift} className="mt-4 flex flex-wrap items-end gap-3"><label className="text-sm">Code<input required maxLength={40} pattern="[A-Za-z0-9][A-Za-z0-9_-]*" value={draft.code} onChange={e => setDraft({ ...draft, code: e.target.value })} className="mt-1 block w-28 rounded-lg border p-2" /></label><label className="text-sm">Name<input required maxLength={120} value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} className="mt-1 block rounded-lg border p-2" /></label><label className="text-sm">Start<input required type="time" value={draft.startTime} onChange={e => setDraft({ ...draft, startTime: e.target.value })} className="mt-1 block rounded-lg border p-2" /></label><label className="text-sm">End<input required type="time" value={draft.endTime} onChange={e => setDraft({ ...draft, endTime: e.target.value })} className="mt-1 block rounded-lg border p-2" /></label><label className="text-sm">Unpaid break (min)<input required type="number" min={0} max={1439} value={draft.unpaidBreakMinutes} onChange={e => setDraft({ ...draft, unpaidBreakMinutes: Number(e.target.value) })} className="mt-1 block w-36 rounded-lg border p-2" /></label><button disabled={busy} className="rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white disabled:opacity-50">{editing ? 'Save shift' : 'Create shift'}</button>{editing && <button type="button" onClick={() => { setEditing(''); setDraft(emptyShift); }} className="rounded-lg border px-4 py-2">Cancel</button>}</form>
+      <div className="mt-5 divide-y">{shifts.map(s => <div key={s.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm"><span><strong>{s.code} · {s.name}</strong> — {s.startTime}–{s.endTime}{s.overnight ? ' (overnight)' : ''}, {s.unpaidBreakMinutes} min break · {s.isActive ? 'Active' : 'Inactive'}</span><span className="flex gap-2"><button onClick={() => edit(s)} className="rounded-lg border px-3 py-1">Edit</button><button disabled={busy} onClick={() => run(() => setShiftActive(s.id, !s.isActive), 'Shift status updated.')} className="rounded-lg border px-3 py-1">{s.isActive ? 'Deactivate' : 'Activate'}</button></span></div>)}{!shifts.length && <p className="py-4 text-sm text-slate-500">Create a shift to start scheduling.</p>}</div></section>
+      <section className="rounded-2xl border border-slate-200 bg-white p-5"><h2 className="text-lg font-semibold">Target and dates</h2><div className="mt-4 flex flex-wrap gap-3"><label className="text-sm">Assign to<select value={targetKind} onChange={e => { setTargetKind(e.target.value as TargetKind); setTargetId(''); }} className="mt-1 block rounded-lg border p-2"><option value="department">Department</option><option value="employee">Employee</option></select></label><label className="text-sm">{targetKind === 'employee' ? 'Employee' : 'Department'}<select required value={targetId} onChange={e => setTargetId(e.target.value)} className="mt-1 block min-w-48 rounded-lg border p-2"><option value="">Select</option>{targetKind === 'employee' ? employees.map(x => <option key={x.id} value={x.id}>{x.firstName} {x.lastName}</option>) : departments.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label><label className="text-sm">Shift<select required value={shiftId} onChange={e => setShiftId(e.target.value)} className="mt-1 block min-w-48 rounded-lg border p-2"><option value="">Select</option>{shifts.filter(x => x.isActive).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label><label className="text-sm">From<input type="date" required value={from} onChange={e => setFrom(e.target.value)} className="mt-1 block rounded-lg border p-2" /></label><label className="text-sm">Until (exclusive)<input type="date" min={from} value={to} onChange={e => setTo(e.target.value)} className="mt-1 block rounded-lg border p-2" /></label></div><div className="mt-4 flex flex-wrap gap-3"><button disabled={!validTarget || busy} onClick={() => run(() => assignShift({ shiftId, ...target(), effectiveFrom: from, ...(effectiveTo() ? { effectiveTo: effectiveTo() } : {}) }), 'Shift assigned.')} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Assign shift</button></div><p className="mt-2 text-xs text-slate-500">One target per assignment. Employee assignments override department assignments where dates overlap.</p></section>
+      <section className="rounded-2xl border border-slate-200 bg-white p-5"><h2 className="text-lg font-semibold">Recurring weekly schedule</h2><div className="mt-4 flex flex-wrap gap-2">{dayNames.map((day, i) => <label key={day} className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><input type="checkbox" checked={weekdays.includes(i + 1)} onChange={() => setWeekdays(v => v.includes(i + 1) ? v.filter(n => n !== i + 1) : [...v, i + 1].sort())} />{day}</label>)}</div><div className="mt-4 flex flex-wrap items-end gap-3"><label className="text-sm">Arrival grace (min)<input type="number" min={0} max={240} value={graceIn} onChange={e => setGraceIn(Number(e.target.value))} className="mt-1 block w-40 rounded-lg border p-2" /></label><label className="text-sm">Departure grace (min)<input type="number" min={0} max={240} value={graceOut} onChange={e => setGraceOut(Number(e.target.value))} className="mt-1 block w-40 rounded-lg border p-2" /></label><button disabled={!validTarget || weekdays.length === 0 || busy} onClick={() => run(() => createRecurringSchedule({ shiftId, ...target(), weekdays, effectiveFrom: from, ...(effectiveTo() ? { effectiveTo: effectiveTo() } : {}), graceInMinutes: graceIn, graceOutMinutes: graceOut }), 'Recurring schedule created.')} className="rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white disabled:opacity-50">Create schedule</button></div><p className="mt-2 text-xs text-slate-500">The schedule uses the target, shift and dates selected above. Monday is day 1.</p></section>
+      <section className="grid gap-5 lg:grid-cols-2"><div className="rounded-2xl border border-slate-200 bg-white p-5"><h2 className="font-semibold">Shift assignments</h2><div className="mt-3 divide-y">{assignments.map(a => <div key={a.id} className="flex justify-between gap-2 py-3 text-sm"><span>{describe(a.employeeId, a.departmentId)} · {shifts.find(x => x.id === a.shiftId)?.name ?? a.shift?.name}<br /><span className="text-xs text-slate-500">{dateText(a.effectiveFrom)} to {dateText(a.effectiveTo)}</span></span>{!a.effectiveTo && <button disabled={busy} onClick={() => closeAssignment(a.id, a.effectiveFrom)} className="self-center rounded border px-2 py-1">End</button>}</div>)}{!assignments.length && <p className="py-4 text-sm text-slate-500">No assignments yet.</p>}</div></div><div className="rounded-2xl border border-slate-200 bg-white p-5"><h2 className="font-semibold">Recurring schedules</h2><div className="mt-3 divide-y">{schedules.map(s => <div key={s.id} className="flex justify-between gap-2 py-3 text-sm"><span>{describe(s.employeeId, s.departmentId)} · {shifts.find(x => x.id === s.shiftId)?.name ?? s.shift?.name}<br /><span className="text-xs text-slate-500">{s.weekdays.map(n => dayNames[n - 1]).join(', ')} · {dateText(s.effectiveFrom)} to {dateText(s.effectiveTo)} · grace {s.graceInMinutes}/{s.graceOutMinutes} min</span></span>{!s.effectiveTo && <button disabled={busy} onClick={() => closeSchedule(s.id, s.effectiveFrom)} className="self-center rounded border px-2 py-1">End</button>}</div>)}{!schedules.length && <p className="py-4 text-sm text-slate-500">No recurring schedules yet.</p>}</div></div></section>
+    </>}
+  </div>;
+}

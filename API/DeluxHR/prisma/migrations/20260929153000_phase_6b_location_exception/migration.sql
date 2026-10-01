@@ -1,0 +1,1 @@
+ALTER TYPE "AttendanceExceptionType" ADD VALUE 'LOCATION_MISMATCH';

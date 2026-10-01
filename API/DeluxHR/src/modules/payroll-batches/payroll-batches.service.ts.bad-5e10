@@ -1,0 +1,1332 @@
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  EmployeePaymentDetailStatus,
+  EmployeeStatus,
+  PayrollBatchEmployeeEligibilityStatus,
+  PayrollBatchEmployeeProcessingStatus,
+  Prisma,
+  RiskEventStatus,
+  RiskEventType,
+} from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
+import type { TenantJwtUser } from '../../common/auth/jwt-user.type';
+import { CreatePayrollBatchDto } from './dto/create-payroll-batch.dto';
+import { PayrollService } from '../payroll/payroll.service';
+import { PayslipsService } from '../payslips/payslips.service';
+type EligibilityStatus = 'READY' | 'WARNING' | 'BLOCKED';
+type EligibilityReason = {
+  code: string;
+  message: string;
+};
+const PAYROLL_RELEVANT_RISK_TYPES: RiskEventType[] = [
+  RiskEventType.DUPLICATE_IDENTITY,
+  RiskEventType.DUPLICATE_EMPLOYEE,
+  RiskEventType.SHARED_BANK_ACCOUNT,
+  RiskEventType.PAYMENT_DETAILS_CHANGED,
+  RiskEventType.SALARY_CHANGED,
+  RiskEventType.RAPID_EMPLOYEE_ACTIVATION,
+  RiskEventType.PAYROLL_ANOMALY,
+  RiskEventType.TERMINATED_EMPLOYEE_PAYROLL_ATTEMPT,
+  RiskEventType.OTHER,
+];
+@Injectable()
+export class PayrollBatchesService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+    private readonly payrollService: PayrollService,
+    private readonly payslipsService: PayslipsService,
+  ) {}
+  async create(
+    organizationId: string,
+    dto: CreatePayrollBatchDto,
+    actor: TenantJwtUser,
+  ) {
+    const payPeriodStart = new Date(dto.payPeriodStart);
+    const payPeriodEnd = new Date(dto.payPeriodEnd);
+    const paymentDate = dto.paymentDate ? new Date(dto.paymentDate) : null;
+    if (payPeriodEnd < payPeriodStart) {
+      throw new BadRequestException(
+        'Pay period end must be on or after pay period start.',
+      );
+    }
+    const currency = (dto.currency ?? 'ZAR').trim().toUpperCase();
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const batch = await tx.payrollBatch.create({
+          data: {
+            organizationId,
+            title: dto.title?.trim() || null,
+            payPeriodStart,
+            payPeriodEnd,
+            paymentDate,
+            currency,
+            notes: dto.notes?.trim() || null,
+            createdByUserId: actor.sub,
+          },
+        });
+        await this.auditService.log(
+          {
+            organizationId,
+            action: 'PAYROLL_BATCH_CREATED',
+            entity: 'PayrollBatch',
+            entityId: batch.id,
+            actorUserId: actor.sub,
+            actorEmail: actor.email,
+            actorRole: actor.role,
+            metadata: {
+              status: batch.status,
+              payPeriodStart: batch.payPeriodStart.toISOString(),
+              payPeriodEnd: batch.payPeriodEnd.toISOString(),
+              paymentDate: batch.paymentDate?.toISOString() ?? null,
+              currency: batch.currency,
+            },
+          },
+          tx,
+        );
+        return batch;
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'A payroll cycle already exists for this pay period.',
+        );
+      }
+      throw error;
+    }
+  }
+  async list(organizationId: string) {
+    return this.prisma.payrollBatch.findMany({
+      where: { organizationId },
+      orderBy: [{ payPeriodStart: 'desc' }, { createdAt: 'desc' }],
+    });
+  }
+  async findOne(organizationId: string, id: string) {
+    const batch = await this.prisma.payrollBatch.findFirst({
+      where: {
+        id,
+        organizationId,
+      },
+      include: {
+        \_count: {
+          select: {
+            payrollRuns: true,
+          },
+        },
+      },
+    });
+    if (!batch) {
+      throw new NotFoundException('Payroll cycle not found.');
+    }
+    return batch;
+  }
+  async generateBulk(
+    organizationId: string,
+    payrollBatchId: string,
+    actor: TenantJwtUser,
+  ) {
+    const batch = await this.prisma.payrollBatch.findFirst({
+      where: { id: payrollBatchId, organizationId },
+    });
+    if (!batch) {
+      throw new NotFoundException('Payroll cycle not found.');
+    }
+    if (!['DRAFT', 'GENERATING', 'CALCULATED'].includes(batch.status)) {
+      throw new BadRequestException(
+        \`Payroll generation is not allowed while the cycle is ${batch.status}.\`,
+      );
+    }
+    if (batch.status !== 'GENERATING') {
+      await this.prisma.payrollBatch.update({
+        where: { id: batch.id },
+        data: {
+          status: 'GENERATING',
+          generationStartedByUserId: actor.sub,
+          generationStartedAt: new Date(),
+        },
+      });
+    }
+    const eligibility = await this.evaluateEligibility(
+      organizationId,
+      payrollBatchId,
+    );
+    const candidates = eligibility.employees.filter(
+      (employee) => employee.eligibility !== 'BLOCKED',
+    );
+    const existingRuns = await this.prisma.payrollRun.findMany({
+      where: { organizationId, payrollBatchId },
+      select: { id: true, employeeId: true },
+    });
+    const existingByEmployee = new Map(
+      existingRuns.map((run) => [run.employeeId, run.id]),
+    );
+    const generated: Array<{ employeeId: string; payrollRunId: string }> = [];
+    const skipped: Array<{
+      employeeId: string;
+      payrollRunId: string;
+      reason: string;
+    }> = [];
+    const failed: Array<{ employeeId: string; reason: string }> = [];
+    for (const employee of candidates) {
+      const existingRunId = existingByEmployee.get(employee.employeeId);
+      if (existingRunId) {
+        await this.prisma.payrollBatchEmployee.update({
+          where: {
+            payrollBatchId_employeeId: {
+              payrollBatchId: batch.id,
+              employeeId: employee.employeeId,
+            },
+          },
+          data: {
+            processingStatus: PayrollBatchEmployeeProcessingStatus.GENERATED,
+            payrollRunId: existingRunId,
+            generatedAt: new Date(),
+            lastGenerationError: null,
+          },
+        });
+        skipped.push({
+          employeeId: employee.employeeId,
+          payrollRunId: existingRunId,
+          reason: 'PAYROLL_RUN_ALREADY_EXISTS',
+        });
+        continue;
+      }
+      const attemptAt = new Date();
+      await this.prisma.payrollBatchEmployee.update({
+        where: {
+          payrollBatchId_employeeId: {
+            payrollBatchId: batch.id,
+            employeeId: employee.employeeId,
+          },
+        },
+        data: {
+          processingStatus: PayrollBatchEmployeeProcessingStatus.GENERATING,
+          generationAttemptCount: { increment: 1 },
+          lastGenerationAttemptAt: attemptAt,
+          lastGenerationError: null,
+        },
+      });
+      try {
+        const run = await this.payrollService.generateFromEarnings(
+          organizationId,
+          {
+            employeeId: employee.employeeId,
+            title: batch.title ?? undefined,
+            payPeriodStart: batch.payPeriodStart.toISOString(),
+            payPeriodEnd: batch.payPeriodEnd.toISOString(),
+            paymentDate: batch.paymentDate?.toISOString(),
+            notes: batch.notes ?? undefined,
+          },
+          actor.sub,
+          { payrollBatchId: batch.id },
+        );
+        await this.prisma.payrollBatchEmployee.update({
+          where: {
+            payrollBatchId_employeeId: {
+              payrollBatchId: batch.id,
+              employeeId: employee.employeeId,
+            },
+          },
+          data: {
+            processingStatus: PayrollBatchEmployeeProcessingStatus.GENERATED,
+            payrollRunId: run.id,
+            generatedAt: new Date(),
+            lastGenerationError: null,
+          },
+        });
+        generated.push({
+          employeeId: employee.employeeId,
+          payrollRunId: run.id,
+        });
+      } catch (error) {
+        const reason =
+          error instanceof Error ? error.message : 'Payroll generation failed.';
+        await this.prisma.payrollBatchEmployee.update({
+          where: {
+            payrollBatchId_employeeId: {
+              payrollBatchId: batch.id,
+              employeeId: employee.employeeId,
+            },
+          },
+          data: {
+            processingStatus: PayrollBatchEmployeeProcessingStatus.FAILED,
+            lastGenerationError: reason,
+          },
+        });
+        failed.push({
+          employeeId: employee.employeeId,
+          reason,
+        });
+      }
+    }
+    const completedAt = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.payrollBatch.update({
+        where: { id: batch.id },
+        data: {
+          status: 'CALCULATED',
+          calculatedAt: completedAt,
+        },
+      });
+      await this.auditService.log(
+        {
+          organizationId,
+          action: 'PAYROLL_BATCH_GENERATED',
+          entity: 'PayrollBatch',
+          entityId: batch.id,
+          actorUserId: actor.sub,
+          actorEmail: actor.email,
+          actorRole: actor.role,
+          metadata: {
+            eligibleCandidates: candidates.length,
+            generated: generated.length,
+            skipped: skipped.length,
+            failed: failed.length,
+            blocked: eligibility.summary.blocked,
+          },
+        },
+        tx,
+      );
+    });
+    return {
+      payrollBatchId: batch.id,
+      status: 'CALCULATED',
+      eligibility: eligibility.summary,
+      generation: {
+        candidates: candidates.length,
+        generated: generated.length,
+        skipped: skipped.length,
+        failed: failed.length,
+      },
+      generated,
+      skipped,
+      failed,
+    };
+  }
+  async getReview(organizationId: string, payrollBatchId: string) {
+    const batch = await this.prisma.payrollBatch.findFirst({
+      where: {
+        id: payrollBatchId,
+        organizationId,
+      },
+      include: {
+        batchEmployees: {
+          orderBy: [
+            { employee: { employeeNumber: 'asc' } },
+            { employee: { lastName: 'asc' } },
+            { employee: { firstName: 'asc' } },
+          ],
+          include: {
+            employee: {
+              select: {
+                id: true,
+                employeeNumber: true,
+                firstName: true,
+                lastName: true,
+                status: true,
+              },
+            },
+            payrollRun: {
+              select: {
+                id: true,
+                status: true,
+                grossEarnings: true,
+                totalDeductions: true,
+                taxableIncome: true,
+                taxAmount: true,
+                uifEmployee: true,
+                uifEmployer: true,
+                sdlEmployer: true,
+                employeeBenefitDeductions: true,
+                employerContributions: true,
+                recurringDeductions: true,
+                earlyPayRecovery: true,
+                netPay: true,
+                totalEmployerCost: true,
+                currency: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!batch) {
+      throw new NotFoundException('Payroll cycle not found.');
+    }
+    if (
+      ![
+        'CALCULATED',
+        'REVIEWED',
+        'APPROVED',
+        'LOCKED',
+        'PAYMENT_PROCESSING',
+        'PAID',
+      ].includes(batch.status)
+    ) {
+      throw new BadRequestException(
+        \`Payroll review is not available while the cycle is ${batch.status}.\`,
+      );
+    }
+    const employeeSummary = {
+      total: batch.batchEmployees.length,
+      ready: 0,
+      warning: 0,
+      blocked: 0,
+      pending: 0,
+      generating: 0,
+      generated: 0,
+      failed: 0,
+      skipped: 0,
+    };
+    const totals = {
+      grossEarnings: 0,
+      totalDeductions: 0,
+      taxableIncome: 0,
+      taxAmount: 0,
+      uifEmployee: 0,
+      uifEmployer: 0,
+      sdlEmployer: 0,
+      employeeBenefitDeductions: 0,
+      employerContributions: 0,
+      recurringDeductions: 0,
+      earlyPayRecovery: 0,
+      netPay: 0,
+      totalEmployerCost: 0,
+    };
+    for (const item of batch.batchEmployees) {
+      if (item.eligibilityStatus === 'READY') employeeSummary.ready += 1;
+      if (item.eligibilityStatus === 'WARNING') employeeSummary.warning += 1;
+      if (item.eligibilityStatus === 'BLOCKED') employeeSummary.blocked += 1;
+      if (item.processingStatus === 'PENDING') employeeSummary.pending += 1;
+      if (item.processingStatus === 'GENERATING')
+        employeeSummary.generating += 1;
+      if (item.processingStatus === 'GENERATED') employeeSummary.generated += 1;
+      if (item.processingStatus === 'FAILED') employeeSummary.failed += 1;
+      if (item.processingStatus === 'SKIPPED') employeeSummary.skipped += 1;
+      if (item.payrollRun) {
+        totals.grossEarnings += item.payrollRun.grossEarnings;
+        totals.totalDeductions += item.payrollRun.totalDeductions;
+        totals.taxableIncome += item.payrollRun.taxableIncome;
+        totals.taxAmount += item.payrollRun.taxAmount;
+        totals.uifEmployee += item.payrollRun.uifEmployee;
+        totals.uifEmployer += item.payrollRun.uifEmployer;
+        totals.sdlEmployer += item.payrollRun.sdlEmployer;
+        totals.employeeBenefitDeductions +=
+          item.payrollRun.employeeBenefitDeductions;
+        totals.employerContributions += item.payrollRun.employerContributions;
+        totals.recurringDeductions += item.payrollRun.recurringDeductions;
+        totals.earlyPayRecovery += item.payrollRun.earlyPayRecovery;
+        totals.netPay += item.payrollRun.netPay;
+        totals.totalEmployerCost += item.payrollRun.totalEmployerCost;
+      }
+    }
+    const employees = batch.batchEmployees.map((item) => ({
+      payrollBatchEmployeeId: item.id,
+      employeeId: item.employeeId,
+      employeeNumber: item.employee.employeeNumber,
+      firstName: item.employee.firstName,
+      lastName: item.employee.lastName,
+      employeeStatus: item.employee.status,
+      eligibilityStatus: item.eligibilityStatus,
+      processingStatus: item.processingStatus,
+      eligibilityReasons: item.eligibilityReasons,
+      eligibilityWarnings: item.eligibilityWarnings,
+      generationAttemptCount: item.generationAttemptCount,
+      lastGenerationAttemptAt: item.lastGenerationAttemptAt,
+      lastGenerationError: item.lastGenerationError,
+      generatedAt: item.generatedAt,
+      reviewedAt: item.reviewedAt,
+      resolvedAt: item.resolvedAt,
+      resolutionNote: item.resolutionNote,
+      payrollRun: item.payrollRun,
+    }));
+    return {
+      payrollBatchId: batch.id,
+      title: batch.title,
+      status: batch.status,
+      payPeriodStart: batch.payPeriodStart,
+      payPeriodEnd: batch.payPeriodEnd,
+      paymentDate: batch.paymentDate,
+      currency: batch.currency,
+      reviewedByUserId: batch.reviewedByUserId,
+      reviewedAt: batch.reviewedAt,
+      employeeSummary,
+      totals,
+      hasExceptions:
+        employeeSummary.blocked > 0 ||
+        employeeSummary.failed > 0 ||
+        employeeSummary.warning > 0,
+      employees,
+    };
+  }
+  async review(
+    organizationId: string,
+    payrollBatchId: string,
+    actor: TenantJwtUser,
+  ) {
+    const batch = await this.prisma.payrollBatch.findFirst({
+      where: {
+        id: payrollBatchId,
+        organizationId,
+      },
+      include: {
+        \_count: {
+          select: {
+            payrollRuns: true,
+          },
+        },
+      },
+    });
+    if (!batch) {
+      throw new NotFoundException('Payroll cycle not found.');
+    }
+    if (batch.status !== 'CALCULATED') {
+      throw new BadRequestException(
+        \`Payroll cycle must be CALCULATED before review. Current status is ${batch.status}.\`,
+      );
+    }
+    if (batch.\_count.payrollRuns === 0) {
+      throw new BadRequestException(
+        'Payroll cycle cannot be reviewed because it has no generated payroll runs.',
+      );
+    }
+    const settings = await this.prisma.payrollSettings.findUnique({
+      where: { organizationId },
+      select: { approvalMode: true },
+    });
+    if (
+      settings?.approvalMode === 'MAKER_CHECKER' &&
+      batch.generationStartedByUserId === actor.sub
+    ) {
+      throw new BadRequestException(
+        'Maker-checker is enabled. The user who generated this payroll cycle cannot review it.',
+      );
+    }
+    const reviewedAt = new Date();
+    const calculatedRuns = await this.prisma.payrollRun.findMany({
+      where: {
+        organizationId,
+        payrollBatchId: batch.id,
+        status: 'CALCULATED',
+      },
+      select: {
+        id: true,
+      },
+    });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.payrollBatch.update({
+        where: { id: batch.id },
+        data: {
+          status: 'REVIEWED',
+          reviewedByUserId: actor.sub,
+          reviewedAt,
+        },
+      });
+      await tx.payrollBatchEmployee.updateMany({
+        where: {
+          organizationId,
+          payrollBatchId: batch.id,
+        },
+        data: {
+          reviewedByUserId: actor.sub,
+          reviewedAt,
+        },
+      });
+      if (calculatedRuns.length > 0) {
+        await tx.payrollRun.updateMany({
+          where: {
+            organizationId,
+            payrollBatchId: batch.id,
+            status: 'CALCULATED',
+          },
+          data: {
+            status: 'REVIEWED',
+            reviewedByUserId: actor.sub,
+            reviewedAt,
+          },
+        });
+        await tx.payrollRunStatusHistory.createMany({
+          data: calculatedRuns.map((run) => ({
+            organizationId,
+            payrollRunId: run.id,
+            fromStatus: 'CALCULATED',
+            toStatus: 'REVIEWED',
+            changedByUserId: actor.sub,
+            note: 'Reviewed as part of payroll batch review.',
+          })),
+        });
+      }
+      await this.auditService.log(
+        {
+          organizationId,
+          action: 'PAYROLL_BATCH_REVIEWED',
+          entity: 'PayrollBatch',
+          entityId: batch.id,
+          actorUserId: actor.sub,
+          actorEmail: actor.email,
+          actorRole: actor.role,
+          metadata: {
+            previousStatus: 'CALCULATED',
+            status: 'REVIEWED',
+            payrollRunsReviewed: calculatedRuns.length,
+            totalPayrollRuns: batch.\_count.payrollRuns,
+          },
+        },
+        tx,
+      );
+    });
+    return this.getReview(organizationId, payrollBatchId);
+  }
+  async approve(
+    organizationId: string,
+    payrollBatchId: string,
+    actor: TenantJwtUser,
+  ) {
+    const batch = await this.prisma.payrollBatch.findFirst({
+      where: {
+        id: payrollBatchId,
+        organizationId,
+      },
+      include: {
+        \_count: {
+          select: {
+            payrollRuns: true,
+          },
+        },
+      },
+    });
+    if (!batch) {
+      throw new NotFoundException('Payroll cycle not found.');
+    }
+    if (batch.status !== 'REVIEWED') {
+      throw new BadRequestException(
+        \`Payroll cycle must be REVIEWED before approval. Current status is ${batch.status}.\`,
+      );
+    }
+    if (batch.\_count.payrollRuns === 0) {
+      throw new BadRequestException(
+        'Payroll cycle cannot be approved because it has no generated payroll runs.',
+      );
+    }
+    const settings = await this.prisma.payrollSettings.findUnique({
+      where: { organizationId },
+      select: { approvalMode: true },
+    });
+    if (settings?.approvalMode === 'MAKER_CHECKER') {
+      if (batch.generationStartedByUserId === actor.sub) {
+        throw new BadRequestException(
+          'Maker-checker is enabled. The user who generated this payroll cycle cannot approve it.',
+        );
+      }
+      if (batch.reviewedByUserId === actor.sub) {
+        throw new BadRequestException(
+          'Maker-checker is enabled. The user who reviewed this payroll cycle cannot approve it.',
+        );
+      }
+    }
+    const reviewState = await this.getReview(organizationId, payrollBatchId);
+    if (reviewState.employeeSummary.generating > 0) {
+      throw new BadRequestException(
+        'Payroll cycle cannot be approved while employee payroll generation is still in progress.',
+      );
+    }
+    if (reviewState.employeeSummary.pending > 0) {
+      throw new BadRequestException(
+        'Payroll cycle cannot be approved while employee payroll records are still pending generation.',
+      );
+    }
+    const reviewedRuns = await this.prisma.payrollRun.findMany({
+      where: {
+        organizationId,
+        payrollBatchId: batch.id,
+        status: 'REVIEWED',
+      },
+      select: {
+        id: true,
+      },
+    });
+    if (reviewedRuns.length === 0) {
+      throw new BadRequestException(
+        'Payroll cycle cannot be approved because it has no reviewed payroll runs.',
+      );
+    }
+    const approvedAt = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.payrollBatch.update({
+        where: { id: batch.id },
+        data: {
+          status: 'APPROVED',
+          approvedByUserId: actor.sub,
+          approvedAt,
+        },
+      });
+      await tx.payrollRun.updateMany({
+        where: {
+          organizationId,
+          payrollBatchId: batch.id,
+          status: 'REVIEWED',
+        },
+        data: {
+          status: 'APPROVED',
+          approvedByUserId: actor.sub,
+          approvedAt,
+        },
+      });
+      await tx.payrollRunStatusHistory.createMany({
+        data: reviewedRuns.map((run) => ({
+          organizationId,
+          payrollRunId: run.id,
+          fromStatus: 'REVIEWED',
+          toStatus: 'APPROVED',
+          changedByUserId: actor.sub,
+          note: 'Approved as part of payroll batch approval.',
+        })),
+      });
+      await this.auditService.log(
+        {
+          organizationId,
+          action: 'PAYROLL_BATCH_APPROVED',
+          entity: 'PayrollBatch',
+          entityId: batch.id,
+          actorUserId: actor.sub,
+          actorEmail: actor.email,
+          actorRole: actor.role,
+          metadata: {
+            previousStatus: 'REVIEWED',
+            status: 'APPROVED',
+            payrollRunsApproved: reviewedRuns.length,
+            totalPayrollRuns: batch.\_count.payrollRuns,
+            hasExceptions: reviewState.hasExceptions,
+            warningEmployees: reviewState.employeeSummary.warning,
+            blockedEmployees: reviewState.employeeSummary.blocked,
+            failedEmployees: reviewState.employeeSummary.failed,
+          },
+        },
+        tx,
+      );
+    });
+    return this.getReview(organizationId, payrollBatchId);
+  }
+  async lock(
+    organizationId: string,
+    payrollBatchId: string,
+    actor: TenantJwtUser,
+  ) {
+    const batch = await this.prisma.payrollBatch.findFirst({
+      where: {
+        id: payrollBatchId,
+        organizationId,
+      },
+      include: {
+        payrollRuns: {
+          select: {
+            id: true,
+            status: true,
+          },
+        },
+      },
+    });
+    if (!batch) {
+      throw new NotFoundException('Payroll cycle not found.');
+    }
+    if (batch.status !== 'APPROVED') {
+      throw new BadRequestException(
+        \`Payroll cycle must be APPROVED before locking. Current status is ${batch.status}.\`,
+      );
+    }
+    if (batch.payrollRuns.length === 0) {
+      throw new BadRequestException(
+        'Payroll cycle cannot be locked because it has no payroll runs.',
+      );
+    }
+    const nonApprovedRuns = batch.payrollRuns.filter(
+      (run) => run.status !== 'APPROVED',
+    );
+    if (nonApprovedRuns.length > 0) {
+      throw new BadRequestException(
+        'Payroll cycle cannot be locked until every generated payroll run is APPROVED.',
+      );
+    }
+    const reviewState = await this.getReview(organizationId, payrollBatchId);
+    const lockedAt = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      const batchUpdate = await tx.payrollBatch.updateMany({
+        where: {
+          id: batch.id,
+          organizationId,
+          status: 'APPROVED',
+        },
+        data: {
+          status: 'LOCKED',
+          lockedByUserId: actor.sub,
+          lockedAt,
+        },
+      });
+      if (batchUpdate.count !== 1) {
+        throw new ConflictException(
+          'Payroll cycle changed before it could be locked. Refresh and try again.',
+        );
+      }
+      const runUpdate = await tx.payrollRun.updateMany({
+        where: {
+          organizationId,
+          payrollBatchId: batch.id,
+          status: 'APPROVED',
+        },
+        data: {
+          status: 'LOCKED',
+          lockedByUserId: actor.sub,
+          lockedAt,
+        },
+      });
+      if (runUpdate.count !== batch.payrollRuns.length) {
+        throw new ConflictException(
+          'One or more payroll runs changed before the cycle could be locked.',
+        );
+      }
+      await tx.payrollRunStatusHistory.createMany({
+        data: batch.payrollRuns.map((run) => ({
+          organizationId,
+          payrollRunId: run.id,
+          fromStatus: 'APPROVED',
+          toStatus: 'LOCKED',
+          changedByUserId: actor.sub,
+          note: 'Locked as part of payroll batch locking.',
+        })),
+      });
+      await this.auditService.log(
+        {
+          organizationId,
+          action: 'PAYROLL_BATCH_LOCKED',
+          entity: 'PayrollBatch',
+          entityId: batch.id,
+          actorUserId: actor.sub,
+          actorEmail: actor.email,
+          actorRole: actor.role,
+          metadata: {
+            previousStatus: 'APPROVED',
+            status: 'LOCKED',
+            payrollRunsLocked: batch.payrollRuns.length,
+            hasExceptions: reviewState.hasExceptions,
+            warningEmployees: reviewState.employeeSummary.warning,
+            blockedEmployees: reviewState.employeeSummary.blocked,
+            failedEmployees: reviewState.employeeSummary.failed,
+          },
+        },
+        tx,
+      );
+    });
+    return this.getReview(organizationId, payrollBatchId);
+  }
+
+  async generateBulkPayslips(
+    organizationId: string,
+    payrollBatchId: string,
+    actor: TenantJwtUser,
+  ) {
+    const batch = await this.prisma.payrollBatch.findFirst({
+      where: { id: payrollBatchId, organizationId },
+      select: {
+        id: true,
+        status: true,
+        payPeriodStart: true,
+        payPeriodEnd: true,
+        currency: true,
+      },
+    });
+
+    if (!batch) {
+      throw new NotFoundException('Payroll cycle not found.');
+    }
+
+    if (batch.status !== 'LOCKED') {
+      throw new BadRequestException(
+        `Payslips can only be generated from a LOCKED payroll cycle. Current status is ${batch.status}.`,
+      );
+    }
+
+    const payrollRuns = await this.prisma.payrollRun.findMany({
+      where: { organizationId, payrollBatchId: batch.id },
+      orderBy: [{ employee: { employeeNumber: 'asc' } }, { createdAt: 'asc' }],
+      select: {
+        id: true,
+        employeeId: true,
+        status: true,
+        employee: {
+          select: {
+            employeeNumber: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+        payslip: {
+          select: {
+            id: true,
+            payslipNumber: true,
+            status: true,
+            generatedAt: true,
+          },
+        },
+      },
+    });
+
+    if (payrollRuns.length === 0) {
+      throw new BadRequestException(
+        'Payroll cycle has no payroll runs from which payslips can be generated.',
+      );
+    }
+
+    const generated: Array<{
+      employeeId: string;
+      employeeNumber: string | null;
+      payrollRunId: string;
+      payslipId: string;
+      payslipNumber: string;
+    }> = [];
+
+    const skipped: Array<{
+      employeeId: string;
+      employeeNumber: string | null;
+      payrollRunId: string;
+      payslipId: string;
+      payslipNumber: string;
+      reason: string;
+    }> = [];
+
+    const failed: Array<{
+      employeeId: string;
+      employeeNumber: string | null;
+      payrollRunId: string;
+      reason: string;
+    }> = [];
+
+    for (const run of payrollRuns) {
+      if (run.payslip) {
+        skipped.push({
+          employeeId: run.employeeId,
+          employeeNumber: run.employee.employeeNumber,
+          payrollRunId: run.id,
+          payslipId: run.payslip.id,
+          payslipNumber: run.payslip.payslipNumber,
+          reason: 'PAYSLIP_ALREADY_EXISTS',
+        });
+        continue;
+      }
+
+      if (run.status !== 'LOCKED') {
+        failed.push({
+          employeeId: run.employeeId,
+          employeeNumber: run.employee.employeeNumber,
+          payrollRunId: run.id,
+          reason: `Payroll run is ${run.status}; expected LOCKED.`,
+        });
+        continue;
+      }
+
+      try {
+        const payslip = await this.payslipsService.generate(organizationId, {
+          payrollRunId: run.id,
+        });
+
+        generated.push({
+          employeeId: run.employeeId,
+          employeeNumber: run.employee.employeeNumber,
+          payrollRunId: run.id,
+          payslipId: payslip.id,
+          payslipNumber: payslip.payslipNumber,
+        });
+      } catch (error) {
+        failed.push({
+          employeeId: run.employeeId,
+          employeeNumber: run.employee.employeeNumber,
+          payrollRunId: run.id,
+          reason:
+            error instanceof Error ? error.message : 'Payslip generation failed.',
+        });
+      }
+    }
+
+    await this.auditService.log({
+      organizationId,
+      action: 'PAYROLL_BATCH_PAYSLIPS_GENERATED',
+      entity: 'PayrollBatch',
+      entityId: batch.id,
+      actorUserId: actor.sub,
+      actorEmail: actor.email,
+      actorRole: actor.role,
+      metadata: {
+        payrollRuns: payrollRuns.length,
+        generated: generated.length,
+        skipped: skipped.length,
+        failed: failed.length,
+      },
+    });
+
+    return {
+      payrollBatchId: batch.id,
+      status: batch.status,
+      payPeriodStart: batch.payPeriodStart,
+      payPeriodEnd: batch.payPeriodEnd,
+      currency: batch.currency,
+      summary: {
+        payrollRuns: payrollRuns.length,
+        generated: generated.length,
+        existing: skipped.length,
+        failed: failed.length,
+        complete:
+          generated.length + skipped.length === payrollRuns.length &&
+          failed.length === 0,
+      },
+      generated,
+      skipped,
+      failed,
+    };
+  }
+
+  async listBatchPayslips(organizationId: string, payrollBatchId: string) {
+    const batch = await this.prisma.payrollBatch.findFirst({
+      where: { id: payrollBatchId, organizationId },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        payPeriodStart: true,
+        payPeriodEnd: true,
+        paymentDate: true,
+        currency: true,
+      },
+    });
+
+    if (!batch) {
+      throw new NotFoundException('Payroll cycle not found.');
+    }
+
+    const payrollRuns = await this.prisma.payrollRun.findMany({
+      where: { organizationId, payrollBatchId: batch.id },
+      orderBy: [{ employee: { employeeNumber: 'asc' } }, { createdAt: 'asc' }],
+      select: {
+        id: true,
+        employeeId: true,
+        status: true,
+        employee: {
+          select: {
+            employeeNumber: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+        payslip: {
+          select: {
+            id: true,
+            payslipNumber: true,
+            status: true,
+            generatedAt: true,
+            issuedAt: true,
+            periodLabel: true,
+            grossEarnings: true,
+            totalDeductions: true,
+            netPay: true,
+            currency: true,
+          },
+        },
+      },
+    });
+
+    const employees = payrollRuns.map((run) => ({
+      employeeId: run.employeeId,
+      employeeNumber: run.employee.employeeNumber,
+      firstName: run.employee.firstName,
+      lastName: run.employee.lastName,
+      payrollRunId: run.id,
+      payrollRunStatus: run.status,
+      payslipGenerated: Boolean(run.payslip),
+      payslip: run.payslip,
+    }));
+
+    const generated = employees.filter((item) => item.payslipGenerated).length;
+
+    return {
+      payrollBatchId: batch.id,
+      title: batch.title,
+      status: batch.status,
+      payPeriodStart: batch.payPeriodStart,
+      payPeriodEnd: batch.payPeriodEnd,
+      paymentDate: batch.paymentDate,
+      currency: batch.currency,
+      summary: {
+        payrollRuns: payrollRuns.length,
+        payslipsGenerated: generated,
+        payslipsOutstanding: payrollRuns.length - generated,
+        complete: payrollRuns.length > 0 && generated === payrollRuns.length,
+      },
+      employees,
+    };
+  }
+
+  async getBatchTotals(organizationId: string, payrollBatchId: string) {
+    const review = await this.getReview(organizationId, payrollBatchId);
+    const payslipState = await this.listBatchPayslips(
+      organizationId,
+      payrollBatchId,
+    );
+    const totals = review.totals;
+
+    return {
+      payrollBatchId: review.payrollBatchId,
+      title: review.title,
+      status: review.status,
+      payPeriodStart: review.payPeriodStart,
+      payPeriodEnd: review.payPeriodEnd,
+      paymentDate: review.paymentDate,
+      currency: review.currency,
+      employees: review.employeeSummary,
+      payslips: payslipState.summary,
+      payrollTotals: totals,
+      downstream: {
+        employeePayments: {
+          destination: '5F_PAYROLL_PAYMENTS',
+          netPayroll: totals.netPay,
+        },
+        statutoryLiabilities: {
+          destination: '5G_PAYROLL_LIABILITIES',
+          paye: totals.taxAmount,
+          employeeUif: totals.uifEmployee,
+          employerUif: totals.uifEmployer,
+          sdl: totals.sdlEmployer,
+        },
+        otherLiabilityIndicators: {
+          destination: '5G_PAYROLL_LIABILITIES',
+          employeeBenefitDeductions: totals.employeeBenefitDeductions,
+          employerContributions: totals.employerContributions,
+          recurringDeductions: totals.recurringDeductions,
+          earlyPayRecovery: totals.earlyPayRecovery,
+        },
+        employerCost: totals.totalEmployerCost,
+      },
+    };
+  }
+
+  async evaluateEligibility(organizationId: string, payrollBatchId: string) {
+    const batch = await this.prisma.payrollBatch.findFirst({
+      where: {
+        id: payrollBatchId,
+        organizationId,
+      },
+    });
+    if (!batch) {
+      throw new NotFoundException('Payroll cycle not found.');
+    }
+    const employees = await this.prisma.employee.findMany({
+      where: {
+        organizationId,
+      },
+      select: {
+        id: true,
+        employeeNumber: true,
+        firstName: true,
+        lastName: true,
+        status: true,
+        payrollProfile: {
+          select: {
+            id: true,
+            basicSalary: true,
+            hourlyRate: true,
+            taxNumber: true,
+            dateOfBirth: true,
+          },
+        },
+        paymentDetails: {
+          where: {
+            status: EmployeePaymentDetailStatus.APPROVED,
+          },
+          select: {
+            id: true,
+          },
+          take: 1,
+        },
+        riskEvents: {
+          where: {
+            status: {
+              in: [RiskEventStatus.OPEN, RiskEventStatus.UNDER_REVIEW],
+            },
+            type: {
+              in: PAYROLL_RELEVANT_RISK_TYPES,
+            },
+          },
+          select: {
+            id: true,
+            type: true,
+            severity: true,
+            status: true,
+          },
+        },
+      },
+      orderBy: [
+        { employeeNumber: 'asc' },
+        { lastName: 'asc' },
+        { firstName: 'asc' },
+      ],
+    });
+    const employeeResults = employees.map((employee) => {
+      const blockedReasons: EligibilityReason[] = [];
+      const warningReasons: EligibilityReason[] = [];
+      if (employee.status !== EmployeeStatus.ACTIVE) {
+        blockedReasons.push({
+          code: 'EMPLOYEE_NOT_ACTIVE',
+          message: \`Employee status is ${employee.status}.\`,
+        });
+      }
+      if (!employee.payrollProfile) {
+        blockedReasons.push({
+          code: 'MISSING_PAYROLL_PROFILE',
+          message: 'Employee does not have a payroll profile.',
+        });
+      } else {
+        const hasBasicSalary = employee.payrollProfile.basicSalary > 0;
+        const hasHourlyRate = (employee.payrollProfile.hourlyRate ?? 0) > 0;
+        if (!hasBasicSalary && !hasHourlyRate) {
+          blockedReasons.push({
+            code: 'MISSING_COMPENSATION',
+            message:
+              'Employee has neither a positive basic salary nor a positive hourly rate.',
+          });
+        }
+        if (!employee.payrollProfile.taxNumber?.trim()) {
+          warningReasons.push({
+            code: 'MISSING_TAX_NUMBER',
+            message: 'Employee payroll profile has no tax number.',
+          });
+        }
+        if (!employee.payrollProfile.dateOfBirth) {
+          warningReasons.push({
+            code: 'MISSING_DATE_OF_BIRTH',
+            message: 'Employee payroll profile has no date of birth.',
+          });
+        }
+      }
+      if (employee.paymentDetails.length === 0) {
+        blockedReasons.push({
+          code: 'MISSING_APPROVED_PAYMENT_DETAILS',
+          message: 'Employee has no approved payment details.',
+        });
+      }
+      if (employee.riskEvents.length > 0) {
+        warningReasons.push({
+          code: 'UNRESOLVED_PAYROLL_RISK',
+          message: \`${employee.riskEvents.length} unresolved payroll-relevant risk event(s) require review.\`,
+        });
+      }
+      const eligibility: EligibilityStatus =
+        blockedReasons.length > 0
+          ? 'BLOCKED'
+          : warningReasons.length > 0
+            ? 'WARNING'
+            : 'READY';
+      return {
+        employeeId: employee.id,
+        employeeNumber: employee.employeeNumber,
+        firstName: employee.firstName,
+        lastName: employee.lastName,
+        eligibility,
+        reasons: [...blockedReasons, ...warningReasons],
+        riskEvents: employee.riskEvents,
+      };
+    });
+    const batchWarnings: EligibilityReason[] = [];
+    if (
+      batch.paymentDate &&
+      (batch.paymentDate < batch.payPeriodStart ||
+        batch.paymentDate > batch.payPeriodEnd)
+    ) {
+      batchWarnings.push({
+        code: 'PAYMENT_DATE_OUTSIDE_PAY_PERIOD',
+        message: 'Payroll payment date falls outside the pay period.',
+      });
+    }
+    const summary = employeeResults.reduce(
+      (result, employee) => {
+        result.total += 1;
+        if (employee.eligibility === 'READY') {
+          result.ready += 1;
+        } else if (employee.eligibility === 'WARNING') {
+          result.warning += 1;
+        } else {
+          result.blocked += 1;
+        }
+        return result;
+      },
+      {
+        total: 0,
+        ready: 0,
+        warning: 0,
+        blocked: 0,
+      },
+    );
+    await this.prisma.$transaction(
+      employeeResults.map((employee) => {
+        const reasons = employee.reasons.filter((reason) =>
+          [
+            'EMPLOYEE_NOT_ACTIVE',
+            'MISSING_PAYROLL_PROFILE',
+            'MISSING_COMPENSATION',
+            'MISSING_APPROVED_PAYMENT_DETAILS',
+          ].includes(reason.code),
+        );
+        const warnings = employee.reasons.filter(
+          (reason) => !reasons.some((blocked) => blocked.code === reason.code),
+        );
+        const eligibilityStatus =
+          employee.eligibility as PayrollBatchEmployeeEligibilityStatus;
+        return this.prisma.payrollBatchEmployee.upsert({
+          where: {
+            payrollBatchId_employeeId: {
+              payrollBatchId: batch.id,
+              employeeId: employee.employeeId,
+            },
+          },
+          create: {
+            organizationId,
+            payrollBatchId: batch.id,
+            employeeId: employee.employeeId,
+            eligibilityStatus,
+            processingStatus:
+              employee.eligibility === 'BLOCKED'
+                ? PayrollBatchEmployeeProcessingStatus.SKIPPED
+                : PayrollBatchEmployeeProcessingStatus.PENDING,
+            eligibilityReasons: reasons as Prisma.InputJsonValue,
+            eligibilityWarnings: warnings as Prisma.InputJsonValue,
+          },
+          update: {
+            eligibilityStatus,
+            eligibilityReasons: reasons as Prisma.InputJsonValue,
+            eligibilityWarnings: warnings as Prisma.InputJsonValue,
+            processingStatus:
+              employee.eligibility === 'BLOCKED'
+                ? PayrollBatchEmployeeProcessingStatus.SKIPPED
+                : undefined,
+          },
+        });
+      }),
+    );
+    return {
+      payrollBatchId: batch.id,
+      title: batch.title,
+      payPeriodStart: batch.payPeriodStart,
+      payPeriodEnd: batch.payPeriodEnd,
+      paymentDate: batch.paymentDate,
+      status: batch.status,
+      batchWarnings,
+      summary,
+      employees: employeeResults,
+    };
+  }
+}

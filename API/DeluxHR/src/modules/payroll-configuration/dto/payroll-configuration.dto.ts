@@ -1,8 +1,146 @@
-import { IsBoolean, IsDateString, IsEnum, IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
-import { BenefitType, ContributionBasis, ContributionMethod, PayFrequency, PayrollApprovalMode } from '@prisma/client';
-export class UpdatePayrollSettingsDto { @IsOptional() @IsEnum(PayFrequency) payFrequency?: PayFrequency; @IsOptional() @IsBoolean() uifRegistered?: boolean; @IsOptional() @IsBoolean() sdlApplicable?: boolean; @IsOptional() @IsEnum(PayrollApprovalMode) approvalMode?: PayrollApprovalMode; }
-export class UpsertPayrollProfileDto { @IsOptional() @IsString() taxNumber?: string; @IsOptional() @IsDateString() dateOfBirth?: string; @IsOptional() @IsNumber() @Min(0) basicSalary?: number; @IsOptional() @IsNumber() @Min(0) pensionableSalary?: number; @IsOptional() @IsNumber() @Min(0) hourlyRate?: number; @IsOptional() @IsEnum(PayFrequency) payFrequency?: PayFrequency; @IsOptional() @IsString() bankName?: string; @IsOptional() @IsString() bankAccountHolder?: string; @IsOptional() @IsString() bankAccountNumber?: string; @IsOptional() @IsString() bankBranchCode?: string; @IsOptional() @IsString() bankAccountType?: string; @IsOptional() @IsInt() @Min(0) medicalAidDependants?: number; }
-export class CreateBenefitPlanDto { @IsString() name!: string; @IsEnum(BenefitType) type!: BenefitType; @IsOptional() @IsString() providerName?: string; @IsEnum(ContributionMethod) employeeMethod!: ContributionMethod; @IsNumber() @Min(0) employeeValue!: number; @IsEnum(ContributionMethod) employerMethod!: ContributionMethod; @IsNumber() @Min(0) employerValue!: number; @IsEnum(ContributionBasis) contributionBasis!: ContributionBasis; }
-export class AssignBenefitDto { @IsString() benefitPlanId!: string; @IsOptional() @IsString() membershipNumber?: string; @IsOptional() @IsEnum(ContributionMethod) employeeMethodOverride?: ContributionMethod; @IsOptional() @IsNumber() @Min(0) employeeValueOverride?: number; @IsOptional() @IsEnum(ContributionMethod) employerMethodOverride?: ContributionMethod; @IsOptional() @IsNumber() @Min(0) employerValueOverride?: number; }
-export class CreateDeductionDefinitionDto { @IsString() name!: string; @IsOptional() @IsString() creditorName?: string; }
-export class AssignDeductionDto { @IsString() deductionDefinitionId!: string; @IsEnum(ContributionMethod) method!: ContributionMethod; @IsNumber() @Min(0) value!: number; }
+import {
+  IsBoolean,
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
+import {
+  BenefitType,
+  ContributionBasis,
+  ContributionMethod,
+  PayFrequency,
+  PayrollApprovalMode,
+} from '@prisma/client';
+
+export class UpdatePayrollSettingsDto {
+  @IsOptional()
+  @IsEnum(PayFrequency)
+  payFrequency?: PayFrequency;
+
+  @IsOptional()
+  @IsBoolean()
+  uifRegistered?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  sdlApplicable?: boolean;
+
+  @IsOptional()
+  @IsEnum(PayrollApprovalMode)
+  approvalMode?: PayrollApprovalMode;
+}
+
+export class UpsertPayrollProfileDto {
+  @IsOptional()
+  @IsString()
+  taxNumber?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dateOfBirth?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  basicSalary?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  pensionableSalary?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  hourlyRate?: number;
+
+  @IsOptional()
+  @IsEnum(PayFrequency)
+  payFrequency?: PayFrequency;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  medicalAidDependants?: number;
+}
+
+export class CreateBenefitPlanDto {
+  @IsString()
+  name!: string;
+
+  @IsEnum(BenefitType)
+  type!: BenefitType;
+
+  @IsOptional()
+  @IsString()
+  providerName?: string;
+
+  @IsEnum(ContributionMethod)
+  employeeMethod!: ContributionMethod;
+
+  @IsNumber()
+  @Min(0)
+  employeeValue!: number;
+
+  @IsEnum(ContributionMethod)
+  employerMethod!: ContributionMethod;
+
+  @IsNumber()
+  @Min(0)
+  employerValue!: number;
+
+  @IsEnum(ContributionBasis)
+  contributionBasis!: ContributionBasis;
+}
+
+export class AssignBenefitDto {
+  @IsString()
+  benefitPlanId!: string;
+
+  @IsOptional()
+  @IsString()
+  membershipNumber?: string;
+
+  @IsOptional()
+  @IsEnum(ContributionMethod)
+  employeeMethodOverride?: ContributionMethod;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  employeeValueOverride?: number;
+
+  @IsOptional()
+  @IsEnum(ContributionMethod)
+  employerMethodOverride?: ContributionMethod;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  employerValueOverride?: number;
+}
+
+export class CreateDeductionDefinitionDto {
+  @IsString()
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  creditorName?: string;
+}
+
+export class AssignDeductionDto {
+  @IsString()
+  deductionDefinitionId!: string;
+
+  @IsEnum(ContributionMethod)
+  method!: ContributionMethod;
+
+  @IsNumber()
+  @Min(0)
+  value!: number;
+}

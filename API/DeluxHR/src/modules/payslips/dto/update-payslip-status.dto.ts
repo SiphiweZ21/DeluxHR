@@ -8,5 +8,5 @@ export enum PayslipStatusDto {
 
 export class UpdatePayslipStatusDto {
   @IsEnum(PayslipStatusDto)
-  status: PayslipStatusDto;
+  status!: PayslipStatusDto;
 }

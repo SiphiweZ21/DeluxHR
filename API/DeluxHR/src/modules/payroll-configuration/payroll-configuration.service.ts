@@ -114,17 +114,60 @@ export class PayrollConfigurationService {
         id: employeeId,
         organizationId: org,
       },
+      include: {
+        payrollProfile: true,
+      },
     });
 
     if (!employee) {
       throw new NotFoundException('Employee not found');
     }
 
+    const existingProfile = employee.payrollProfile;
+
+    if (existingProfile) {
+      const directCompensationChanges: string[] = [];
+
+      if (
+        dto.basicSalary !== undefined &&
+        dto.basicSalary !== existingProfile.basicSalary
+      ) {
+        directCompensationChanges.push('basicSalary');
+      }
+
+      if (
+        dto.pensionableSalary !== undefined &&
+        dto.pensionableSalary !== existingProfile.pensionableSalary
+      ) {
+        directCompensationChanges.push('pensionableSalary');
+      }
+
+      if (
+        dto.hourlyRate !== undefined &&
+        dto.hourlyRate !== existingProfile.hourlyRate
+      ) {
+        directCompensationChanges.push('hourlyRate');
+      }
+
+      if (directCompensationChanges.length > 0) {
+        throw new BadRequestException(
+          'Existing compensation cannot be changed directly. Submit a compensation change request for approval.',
+        );
+      }
+    }
+
     const data = {
-      ...dto,
-      dateOfBirth: dto.dateOfBirth
-        ? new Date(dto.dateOfBirth)
-        : undefined,
+      taxNumber: dto.taxNumber,
+      dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : undefined,
+      payFrequency: dto.payFrequency,
+      medicalAidDependants: dto.medicalAidDependants,
+      ...(existingProfile
+        ? {}
+        : {
+            basicSalary: dto.basicSalary,
+            pensionableSalary: dto.pensionableSalary,
+            hourlyRate: dto.hourlyRate,
+          }),
     };
 
     return this.prisma.employeePayrollProfile.upsert({
@@ -164,10 +207,7 @@ export class PayrollConfigurationService {
   }
 
   createBenefit(org: string, dto: CreateBenefitPlanDto) {
-    if (
-      dto.employeeMethod === 'NONE' &&
-      dto.employerMethod === 'NONE'
-    ) {
+    if (dto.employeeMethod === 'NONE' && dto.employerMethod === 'NONE') {
       throw new BadRequestException(
         'At least one contribution side must be configured',
       );
@@ -192,10 +232,7 @@ export class PayrollConfigurationService {
     });
   }
 
-  createDeduction(
-    org: string,
-    dto: CreateDeductionDefinitionDto,
-  ) {
+  createDeduction(org: string, dto: CreateDeductionDefinitionDto) {
     return this.prisma.payrollDeductionDefinition.create({
       data: {
         organizationId: org,
@@ -204,11 +241,7 @@ export class PayrollConfigurationService {
     });
   }
 
-  async assignBenefit(
-    org: string,
-    employeeId: string,
-    dto: AssignBenefitDto,
-  ) {
+  async assignBenefit(org: string, employeeId: string, dto: AssignBenefitDto) {
     const profile = await this.ensureProfile(org, employeeId);
 
     const plan = await this.prisma.benefitPlan.findFirst({
@@ -262,13 +295,12 @@ export class PayrollConfigurationService {
   ) {
     const profile = await this.ensureProfile(org, employeeId);
 
-    const definition =
-      await this.prisma.payrollDeductionDefinition.findFirst({
-        where: {
-          id: dto.deductionDefinitionId,
-          organizationId: org,
-        },
-      });
+    const definition = await this.prisma.payrollDeductionDefinition.findFirst({
+      where: {
+        id: dto.deductionDefinitionId,
+        organizationId: org,
+      },
+    });
 
     if (!definition) {
       throw new NotFoundException('Deduction not found');
@@ -319,10 +351,7 @@ export class PayrollConfigurationService {
     });
   }
 
-  private async ensureProfile(
-    org: string,
-    employeeId: string,
-  ) {
+  private async ensureProfile(org: string, employeeId: string) {
     const employee = await this.prisma.employee.findFirst({
       where: {
         id: employeeId,

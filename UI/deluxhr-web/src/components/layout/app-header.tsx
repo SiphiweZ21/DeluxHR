@@ -6,15 +6,30 @@ import { getUser } from '../../lib/auth';
 
 const titles: Record<string, string> = {
   '/dashboard': 'Dashboard',
+  '/remittance-payments':'Remittance Preparation', '/remittance-beneficiaries':'Remittance Beneficiaries', '/early-pay-repayments':'Early Pay Repayments', '/payroll-payments': 'Payroll Payment Batches',
+  '/company-banking': 'Banking & Payments',
+  '/company-services': 'Company Services',
+  '/onboarding': 'Company Setup',
+  '/onboarding/preferences': 'Onboarding Preferences',
+  '/company-profile': 'Company Profile',
+  '/access-setup': 'Access Setup',
   '/ceo-dashboard': 'Executive Dashboard',
   '/employees': 'Employees',
   '/departments': 'Departments',
   '/leave-types': 'Leave Types',
+  '/leave-policies': 'Leave Policies',
+  '/leave-approvals': 'Leave Approvals',
+  '/hr-service-desk': 'HR Service Desk',
+  '/communications': 'Employee Communications',
+  '/shifts': 'Shifts & Schedules',
+  '/attendance-exceptions': 'Attendance Exceptions',
+  '/workforce-reports': 'Workforce Reports',
   '/leave-requests': 'Leave Management',
   '/attendance': 'Attendance',
   '/timesheets': 'Timesheets',
   '/earnings': 'Earnings',
   '/payroll-runs': 'Payroll Runs',
+  '/payroll-liabilities': 'Payroll Liabilities & Remittances',
   '/payslips': 'Payslips',
   '/early-pay': 'Early Pay',
   '/audit-logs': 'Audit Logs',
@@ -40,7 +55,7 @@ export function AppHeader({
     setMounted(true);
   }, []);
 
-  const title = titles[pathname] ?? 'Workspace';
+  const title = titles[pathname] ?? (pathname.startsWith('/leave-requests/') ? 'Leave Request Details' : pathname.startsWith('/hr-service-desk/') ? 'HR Request Details' : pathname.startsWith('/communications/') ? 'Announcement Details' : 'Workspace');
 
   const role =
     mounted && user?.role

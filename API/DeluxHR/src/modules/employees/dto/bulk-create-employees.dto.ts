@@ -6,5 +6,5 @@ export class BulkCreateEmployeesDto {
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateEmployeeDto)
-  employees: CreateEmployeeDto[];
+  employees!: CreateEmployeeDto[];
 }

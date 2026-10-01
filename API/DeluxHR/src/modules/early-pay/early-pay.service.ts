@@ -3,10 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  EarlyPayRequestStatus,
-  EarlyPayTransferType,
-} from '@prisma/client';
+import { EarlyPayRequestStatus, EarlyPayTransferType } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateEarlyPayRequestDto } from './dto/create-early-pay-request.dto';
@@ -25,10 +22,7 @@ export class EarlyPayService {
     });
   }
 
-  async updatePolicy(
-    organizationId: string,
-    dto: UpdateEarlyPayPolicyDto,
-  ) {
+  async updatePolicy(organizationId: string, dto: UpdateEarlyPayPolicyDto) {
     await this.getPolicy(organizationId);
 
     return this.prisma.earlyPayPolicy.update({
@@ -53,11 +47,7 @@ export class EarlyPayService {
 
     const now = new Date();
 
-    const payPeriodStart = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      1,
-    );
+    const payPeriodStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
     const payPeriodEnd = new Date(
       now.getFullYear(),
@@ -118,9 +108,7 @@ export class EarlyPayService {
       });
 
       qualifyingDays = new Set(
-        attendance.map((record) =>
-          record.workDate.toISOString().slice(0, 10),
-        ),
+        attendance.map((record) => record.workDate.toISOString().slice(0, 10)),
       ).size;
     }
 
@@ -143,21 +131,16 @@ export class EarlyPayService {
       0,
     );
 
-    const estimatedPaye =
-      grossEarned * (policy.estimatedPayeReserveRate / 100);
+    const estimatedPaye = grossEarned * (policy.estimatedPayeReserveRate / 100);
 
-    const estimatedUif =
-      grossEarned * (policy.estimatedUifReserveRate / 100);
+    const estimatedUif = grossEarned * (policy.estimatedUifReserveRate / 100);
 
     const protectedDeductions =
       grossEarned * (policy.protectedDeductionRate / 100);
 
     const estimatedNetEarned = Math.max(
       0,
-      grossEarned -
-        estimatedPaye -
-        estimatedUif -
-        protectedDeductions,
+      grossEarned - estimatedPaye - estimatedUif - protectedDeductions,
     );
 
     const previous = await this.prisma.earlyPayRequest.findMany({
@@ -168,13 +151,7 @@ export class EarlyPayService {
           gte: payPeriodStart,
         },
         status: {
-          in: [
-            'PENDING',
-            'APPROVED',
-            'PROCESSING',
-            'PAID',
-            'RECOVERED',
-          ],
+          in: ['PENDING', 'APPROVED', 'PROCESSING', 'PAID', 'RECOVERED'],
         },
       },
     });
@@ -189,10 +166,7 @@ export class EarlyPayService {
 
     const availableAmount = Math.max(
       0,
-      Math.min(
-        policy.maximumRequestAmount,
-        accessLimit - alreadyAccessed,
-      ),
+      Math.min(policy.maximumRequestAmount, accessLimit - alreadyAccessed),
     );
 
     const reasons: string[] = [];
@@ -218,15 +192,11 @@ export class EarlyPayService {
     }
 
     if (grossEarned <= 0) {
-      reasons.push(
-        'No qualifying approved earnings are available yet',
-      );
+      reasons.push('No qualifying approved earnings are available yet');
     }
 
     if (availableAmount < policy.minimumRequestAmount) {
-      reasons.push(
-        'Available amount is below the minimum request amount',
-      );
+      reasons.push('Available amount is below the minimum request amount');
     }
 
     return {
@@ -255,14 +225,8 @@ export class EarlyPayService {
     };
   }
 
-  async createRequest(
-    organizationId: string,
-    dto: CreateEarlyPayRequestDto,
-  ) {
-    const quote = await this.quote(
-      organizationId,
-      dto.employeeId,
-    );
+  async createRequest(organizationId: string, dto: CreateEarlyPayRequestDto) {
+    const quote = await this.quote(organizationId, dto.employeeId);
 
     if (!quote.eligible) {
       throw new BadRequestException(
@@ -296,53 +260,44 @@ export class EarlyPayService {
 
     // Employee receives the requested amount.
     // Payroll recovers the requested amount plus the selected transfer fee.
-    const totalPayrollRecovery =
-      dto.amount + transferFee;
+    const totalPayrollRecovery = dto.amount + transferFee;
 
-    const request =
-      await this.prisma.earlyPayRequest.create({
-        data: {
-          organizationId,
-          employeeId: dto.employeeId,
-          payPeriodStart: quote.payPeriodStart,
-          payPeriodEnd: quote.payPeriodEnd,
-          qualifyingDays: quote.qualifyingDays,
-          grossEarnedAtRequest: quote.grossEarned,
-          estimatedPaye: quote.estimatedPaye,
-          estimatedUif: quote.estimatedUif,
-          protectedDeductions: quote.protectedDeductions,
-          estimatedNetEarned: quote.estimatedNetEarned,
-          accessiblePercentage: quote.accessiblePercentage,
-          availableAmountAtRequest: quote.availableAmount,
-          requestedAmount: dto.amount,
+    const request = await this.prisma.earlyPayRequest.create({
+      data: {
+        organizationId,
+        employeeId: dto.employeeId,
+        payPeriodStart: quote.payPeriodStart,
+        payPeriodEnd: quote.payPeriodEnd,
+        qualifyingDays: quote.qualifyingDays,
+        grossEarnedAtRequest: quote.grossEarned,
+        estimatedPaye: quote.estimatedPaye,
+        estimatedUif: quote.estimatedUif,
+        protectedDeductions: quote.protectedDeductions,
+        estimatedNetEarned: quote.estimatedNetEarned,
+        accessiblePercentage: quote.accessiblePercentage,
+        availableAmountAtRequest: quote.availableAmount,
+        requestedAmount: dto.amount,
 
-          // Percentage service fee removed.
-          serviceFee: 0,
+        // Percentage service fee removed.
+        serviceFee: 0,
 
-          transferFee,
-          instantFee,
-          netDisbursement: dto.amount,
-          totalPayrollRecovery,
-          transferType:
-            dto.transferType as EarlyPayTransferType,
-          calculationSnapshot: JSON.parse(
-            JSON.stringify(quote),
-          ),
-        },
-        include: {
-          employee: {
-            include: {
-              department: true,
-            },
+        transferFee,
+        instantFee,
+        netDisbursement: dto.amount,
+        totalPayrollRecovery,
+        transferType: dto.transferType as EarlyPayTransferType,
+        calculationSnapshot: JSON.parse(JSON.stringify(quote)),
+      },
+      include: {
+        employee: {
+          include: {
+            department: true,
           },
         },
-      });
+      },
+    });
 
-    await this.audit(
-      organizationId,
-      'CREATE',
-      request.id,
-    );
+    await this.audit(organizationId, 'CREATE', request.id);
 
     return request;
   }
@@ -366,10 +321,7 @@ export class EarlyPayService {
     });
   }
 
-  async listByEmployee(
-    organizationId: string,
-    employeeId: string,
-  ) {
+  async listByEmployee(organizationId: string, employeeId: string) {
     return this.prisma.earlyPayRequest.findMany({
       where: {
         organizationId,
@@ -387,134 +339,68 @@ export class EarlyPayService {
     reviewerId: string,
     dto: ReviewEarlyPayRequestDto,
   ) {
-    const existing = await this.findRequest(
-      organizationId,
-      id,
-    );
+    const existing = await this.findRequest(organizationId, id);
 
     if (existing.status !== 'PENDING') {
-      throw new BadRequestException(
-        'Only pending requests can be reviewed',
-      );
+      throw new BadRequestException('Only pending requests can be reviewed');
     }
 
-    const status =
-      dto.status as EarlyPayRequestStatus;
+    const status = dto.status as EarlyPayRequestStatus;
 
-    const result =
-      await this.prisma.earlyPayRequest.update({
-        where: {
-          id,
-        },
+    return this.prisma.$transaction(async (tx) => {
+      const changed = await tx.earlyPayRequest.updateMany({
+        where: { id, organizationId, status: 'PENDING' },
         data: {
           status,
           reviewedAt: new Date(),
           reviewedBy: reviewerId,
-          approvedAt:
-            status === 'APPROVED'
-              ? new Date()
-              : null,
-          rejectionReason:
-            status === 'REJECTED'
-              ? dto.reason
-              : null,
-        },
-        include: {
-          employee: {
-            include: {
-              department: true,
-            },
-          },
+          approvedAt: status === 'APPROVED' ? new Date() : null,
+          rejectionReason: status === 'REJECTED' ? dto.reason : null,
         },
       });
-
-    await this.audit(
-      organizationId,
-      status,
-      id,
-    );
-
-    return result;
+      if (changed.count !== 1)
+        throw new BadRequestException(
+          'Request is no longer pending. Refresh before reviewing.',
+        );
+      await tx.auditLog.create({
+        data: {
+          organizationId,
+          action: status,
+          entity: 'EarlyPayRequest',
+          entityId: id,
+          actorUserId: reviewerId,
+        },
+      });
+      return tx.earlyPayRequest.findUnique({
+        where: { id },
+        include: { employee: { include: { department: true } } },
+      });
+    });
   }
 
-  async processPayment(
-    organizationId: string,
-    id: string,
-  ) {
-    const existing = await this.findRequest(
-      organizationId,
-      id,
+  async processPayment(organizationId: string, id: string) {
+    // Kept as an explicit rejection for older clients; treasury confirmation owns PAID.
+    throw new BadRequestException(
+      'Simulated payments are disabled. Use platform Early Pay treasury batches and independently confirm the bank result.',
     );
+  }
 
-    if (existing.status !== 'APPROVED') {
-      throw new BadRequestException(
-        'Only approved requests can be processed',
-      );
-    }
-
-    await this.prisma.earlyPayRequest.update({
+  private async findRequest(organizationId: string, id: string) {
+    const request = await this.prisma.earlyPayRequest.findFirst({
       where: {
         id,
-      },
-      data: {
-        status: 'PROCESSING',
+        organizationId,
       },
     });
 
-    const result =
-      await this.prisma.earlyPayRequest.update({
-        where: {
-          id,
-        },
-        data: {
-          status: 'PAID',
-          paidAt: new Date(),
-          paymentReference: `SIM-${Date.now()}`,
-        },
-        include: {
-          employee: {
-            include: {
-              department: true,
-            },
-          },
-        },
-      });
-
-    await this.audit(
-      organizationId,
-      'PAYMENT_SIMULATED',
-      id,
-    );
-
-    return result;
-  }
-
-  private async findRequest(
-    organizationId: string,
-    id: string,
-  ) {
-    const request =
-      await this.prisma.earlyPayRequest.findFirst({
-        where: {
-          id,
-          organizationId,
-        },
-      });
-
     if (!request) {
-      throw new NotFoundException(
-        'Early Pay request not found',
-      );
+      throw new NotFoundException('Early Pay request not found');
     }
 
     return request;
   }
 
-  private audit(
-    organizationId: string,
-    action: string,
-    entityId: string,
-  ) {
+  private audit(organizationId: string, action: string, entityId: string) {
     return this.prisma.auditLog.create({
       data: {
         organizationId,

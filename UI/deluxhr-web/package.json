@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:remittances": "node scripts/verify-remittance-contract.cjs",
+    "test:onboarding": "node scripts/verify-onboarding-contract.cjs",
+    "test:login": "node scripts/verify-login-contract.cjs",
+    "test:structure": "node scripts/verify-structure-flow.cjs"
   },
   "dependencies": {
     "next": "16.1.7",

@@ -50,3 +50,5 @@ yarn-error.log*
 
 # Generated employee documents
 API/DeluxHR/uploads/
+
+**/PHASE_*.md

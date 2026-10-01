@@ -1,0 +1,19 @@
+import { workforceRequest as request, getAuthHeaders, handleResponse } from './api';
+export type RepaymentSource={ledgerEntryId:string;requestId:string|null;employeeName:string;payrollRunId:string;amountCents:number;principalCents:number;feeCents:number;eligible:boolean;reason:string|null;allocatedBatchId:string|null};
+export type RepaymentAccount={id?:string;name:string;bank?:string;bankName?:string;accountHolder?:string;accountHolderName?:string;accountNumberMasked:string;branchCode?:string;adapterId?:string};
+export type RepaymentReceipt={id:string;amountCents:number;bankReference:string;evidence:string;receivedAt:string;status:string;recordedBy:string;decidedBy:string|null;decisionReason:string|null};
+export type RepaymentBatch={id:string;organizationId:string;organizationName?:string;period:string;status:string;totalCents:number;confirmedCents:number;pendingCents:number;outstandingCents:number;paymentDate:string;paymentReference:string;preparedBy:string;approvedBy:string|null;submissionReference:string|null;submissionEvidence:string|null;funding:RepaymentAccount;destination:RepaymentAccount;items:{id:string;employeeName:string;amountCents:number;principalCents:number;feeCents:number;ledgerEntryId:string;requestId:string;payrollRunId:string}[];receipts:RepaymentReceipt[]};
+export type RepaymentRegister={period:string;rows:RepaymentSource[];availableCents:number;profiles:RepaymentAccount[];destination:RepaymentAccount|null;batches:RepaymentBatch[];bankImportReady:false};
+export type RepaymentPlatform={accounts:RepaymentAccount[];destinationAccountId:string|null;batches:RepaymentBatch[]};
+export type RepaymentInspection={funding:Record<string,string>;destination:Record<string,string>;paymentReference:string;totalCents:number};
+const base='early-pay-repayments',platform='platform-admin/early-pay-repayments',id=encodeURIComponent;
+export const getRepaymentRegister=(period:string)=>request<RepaymentRegister>(`${base}/register?${new URLSearchParams({period})}`);
+export const getRepaymentDetail=(key:string)=>request<RepaymentBatch>(`${base}/batches/${id(key)}`);
+export const prepareRepayment=(payload:{period:string;fundingProfileId?:string;ledgerEntryIds:string[];paymentDate:string;reason:string})=>request<RepaymentBatch>(`${base}/batches`,'POST',payload);
+export const repaymentAction=(key:string,action:'approve'|'cancel'|'submit',payload:Record<string,string>)=>request<RepaymentBatch>(`${base}/batches/${id(key)}/${action}`,'POST',payload);
+export const inspectRepayment=(key:string,payload:Record<string,string>)=>request<RepaymentInspection>(`${base}/batches/${id(key)}/inspect`,'POST',payload);
+export const getPlatformRepayments=()=>request<RepaymentPlatform>(platform);
+export const setRepaymentDestination=(payload:Record<string,string>)=>request<unknown>(`${platform}/destination`,'POST',payload);
+export const recordRepaymentReceipt=(key:string,payload:{password:string;reason:string;amountCents:number;receivedAt:string;bankReference:string;evidence:string})=>request<RepaymentBatch>(`${platform}/batches/${id(key)}/receipts`,'POST',payload);
+export const decideRepaymentReceipt=(key:string,receipt:string,payload:Record<string,string>)=>request<RepaymentBatch>(`${platform}/batches/${id(key)}/receipts/${id(receipt)}/decision`,'POST',payload);
+export async function downloadRepayment(key:string,draft=false){const res=await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/${base}/batches/${id(key)}/${draft?'draft':'report'}`,{method:'POST',headers:getAuthHeaders(),cache:'no-store'});if(!res.ok){await handleResponse(res,'Unable to download repayment file.');return;}const url=URL.createObjectURL(await res.blob()),a=document.createElement('a');a.href=url;a.download=draft?`DRAFT-NOT-FOR-BANK-UPLOAD-EARLY-PAY-REPAYMENT-${key}.txt`:`DeluxHR-Early-Pay-repayment-report-${key}.csv`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}

@@ -2,7 +2,7 @@ type AuthUser = {
   id: string;
   email: string;
   role: string;
-  organizationId: string;
+  organizationId: string | null;
 };
 
 export function saveAuth(token: string, user?: AuthUser) {
@@ -14,7 +14,7 @@ export function saveAuth(token: string, user?: AuthUser) {
     localStorage.setItem('user', JSON.stringify(user));
   }
 
-  document.cookie = `deluxhr_token=${token}; path=/; max-age=${60 * 60 * 24 * 7}; samesite=lax`;
+  document.cookie = `deluxhr_token=${token}; path=/; max-age=${60 * 60}; samesite=lax`;
 }
 
 export function getToken() {
@@ -47,3 +47,4 @@ export function isAuthenticated() {
   if (typeof window === 'undefined') return false;
   return !!localStorage.getItem('token');
 }
+export function homeForRole(role?: string) { return role === 'PLATFORM_ADMIN' || role === 'SUPER_ADMIN' ? '/platform-admin' : '/dashboard'; }

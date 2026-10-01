@@ -2,7 +2,7 @@ import { IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class GeneratePayslipDto {
   @IsUUID()
-  payrollRunId: string;
+  payrollRunId!: string;
 
   @IsOptional()
   @IsString()

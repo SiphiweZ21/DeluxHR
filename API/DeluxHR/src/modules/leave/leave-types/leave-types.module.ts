@@ -8,5 +8,6 @@ import { AuditModule } from '../../audit/audit.module';
   imports: [PrismaModule, AuditModule],
   controllers: [LeaveTypesController],
   providers: [LeaveTypesService],
+  exports: [LeaveTypesService],
 })
 export class LeaveTypesModule {}

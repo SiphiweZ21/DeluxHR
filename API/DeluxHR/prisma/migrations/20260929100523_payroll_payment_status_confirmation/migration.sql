@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "Permission" ADD VALUE 'CONFIRM_PAYROLL_PAYMENTS';

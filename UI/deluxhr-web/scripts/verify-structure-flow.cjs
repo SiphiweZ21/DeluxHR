@@ -1,0 +1,10 @@
+const fs=require('fs'),ts=require('typescript'),assert=require('node:assert/strict'),React=require('react'),{renderToStaticMarkup}=require('react-dom/server');
+for(const ext of ['.ts','.tsx'])require.extensions[ext]=(m,f)=>m._compile(ts.transpileModule(fs.readFileSync(f,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,jsx:ts.JsxEmit.ReactJSX}}).outputText,f);
+process.env.NEXT_PUBLIC_API_BASE_URL='http://localhost:3000';
+const {StructureSetup}=require('../src/components/onboarding/company-setup.tsx');
+const {SetupContext,SetupForm}=require('../src/components/onboarding/common.tsx');
+function render(departments){return renderToStaticMarkup(React.createElement(SetupContext.Provider,{value:{choices:{departments,positions:[],employees:[],leaveTypes:[],policies:[]},remember(){},refresh:async()=>{},pending:true}},React.createElement(StructureSetup)));}
+const empty=render([]);assert(empty.indexOf('1. Create a department') < empty.indexOf('2. Create positions'));assert(empty.includes('Create a department above first'));assert(!empty.includes('name="departmentId"'));
+const ready=render([{id:'dept',name:'Operations'}]);assert(ready.indexOf('1. Create a department') < ready.indexOf('2. Create a position'));assert(ready.includes('name="departmentId"'));assert(ready.includes('Job role name *'));assert(ready.includes('Create position'));assert(ready.includes('No job roles yet'));assert(ready.includes('<details'));assert(!ready.includes('<details open'));
+const form=renderToStaticMarkup(React.createElement(SetupForm,{title:'Example',fields:[{name:'name',label:'Name',required:true},{name:'code',label:'Code *',required:true}],submitLabel:'Create example',save:async()=>{}}));assert(form.includes('Name *'));assert(!form.includes('Code * *'));assert(form.includes('Create example'));
+console.log('Passed structure UI checks: department-first order, empty prerequisite, required markers, saved-department selector, role empty state, collapsed attendance setup and action labels.');
