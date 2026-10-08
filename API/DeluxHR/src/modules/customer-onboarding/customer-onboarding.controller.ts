@@ -1,3 +1,7 @@
+import { BatchApproveEmployeesDto } from '../employees/dto/batch-approve-employees.dto';
+import { Permission } from '@prisma/client';
+import { PermissionsGuard } from '../../common/access/permissions.guard';
+import { RequirePermissions } from '../../common/access/require-permissions.decorator';
 import { RejectEmployeeDocumentDto } from '../employee-documents/dto/reject-employee-document.dto';
 import {
   CreatePositionDto,
@@ -110,7 +114,10 @@ export class CustomerOnboardingController {
   ) {
     return this.employees.findOne(this.admin(a), id);
   }
-  @Post('employees') createEmployee(
+  @Post('employees')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permission.ADD_EMPLOYEES)
+  createEmployee(
     @CurrentTenantUser() a: TenantJwtUser,
     @Body() d: CreateEmployeeDto,
   ) {
@@ -356,20 +363,43 @@ export class CustomerOnboardingController {
       );
     return this.users.create(org, dto, actor);
   }
-  @Post('employees/bulk') bulk(
+  @Post('employees/approve-batch')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permission.APPROVE_EMPLOYEES)
+  approveBatch(
+    @Body() dto: BatchApproveEmployeesDto,
+    @CurrentTenantUser() actor: TenantJwtUser,
+  ) {
+    return this.employees.approveBatch(
+      this.admin(actor),
+      dto.employeeIds,
+      actor,
+      true,
+    );
+  }
+  @Post('employees/bulk')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permission.ADD_EMPLOYEES)
+  bulk(
     @CurrentTenantUser() actor: TenantJwtUser,
     @Body() dto: BulkCreateEmployeesDto,
   ) {
     return this.employees.bulkCreate(this.admin(actor), dto.employees, actor);
   }
-  @Patch('employees/:id') employee(
+  @Patch('employees/:id')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permission.MANAGE_EMPLOYEES)
+  employee(
     @CurrentTenantUser() actor: TenantJwtUser,
     @Param('id') id: string,
     @Body() dto: UpdateEmployeeDto,
   ) {
     return this.employees.update(this.admin(actor), id, dto, actor);
   }
-  @Post('employees/:id/activate') activateEmployee(
+  @Post('employees/:id/activate')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permission.APPROVE_EMPLOYEES)
+  activateEmployee(
     @CurrentTenantUser() actor: TenantJwtUser,
     @Param('id') id: string,
   ) {

@@ -1,14 +1,11 @@
+import { AccessControlService } from '../../common/access/access-control.service';
 import {
   BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  DataScope,
-  Permission,
-  UserRole,
-} from '@prisma/client';
+import { DataScope, Permission, UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { hashPassword } from '../../common/auth/password';
@@ -31,7 +28,26 @@ export class CompanyUsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly access: AccessControlService,
   ) {}
+  async accessPresets() {
+    return {
+      roles: ROLE_PERMISSION_PRESETS,
+      departments: [
+        { name: 'Executive Leadership', role: 'EXECUTIVE' },
+        { name: 'Human Resources & Training', role: 'HR_ADMIN' },
+      ],
+    };
+  }
+  async effective(organizationId: string, userId: string) {
+    const user = await this.getCompanyUser(organizationId, userId);
+    return this.access.getEffectivePermissions({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      organizationId,
+    });
+  }
   async create(
     organizationId: string,
     dto: CreateCompanyUserDto,
@@ -44,20 +60,24 @@ export class CompanyUsersService {
       where: { email },
     });
     if (existing) {
-      throw new BadRequestException(
-        'Email already in use',
-      );
+      throw new BadRequestException('Email already in use');
     }
-    const passwordHash = await hashPassword(
-      dto.password,
-    );
+    const passwordHash = await hashPassword(dto.password);
     const user = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.user.create({ data: {
-        fullName: dto.fullName.trim(), email, passwordHash,
-        role: dto.role, organizationId, isActive: true,
-      } });
+      const created = await tx.user.create({
+        data: {
+          fullName: dto.fullName.trim(),
+          email,
+          passwordHash,
+          role: dto.role,
+          organizationId,
+          isActive: true,
+        },
+      });
       for (const grant of ROLE_PERMISSION_PRESETS[dto.role] ?? []) {
-        await tx.userPermission.create({ data: { organizationId, userId: created.id, ...grant } });
+        await tx.userPermission.create({
+          data: { organizationId, userId: created.id, ...grant },
+        });
       }
       return created;
     });
@@ -97,10 +117,7 @@ export class CompanyUsersService {
       permissions: user.permissions,
     }));
   }
-  async findOne(
-    organizationId: string,
-    userId: string,
-  ) {
+  async findOne(organizationId: string, userId: string) {
     const user = await this.prisma.user.findFirst({
       where: {
         id: userId,
@@ -115,9 +132,7 @@ export class CompanyUsersService {
       },
     });
     if (!user) {
-      throw new NotFoundException(
-        'Company user not found',
-      );
+      throw new NotFoundException('Company user not found');
     }
     return {
       ...this.mapUser(user),
@@ -131,16 +146,11 @@ export class CompanyUsersService {
     actor: TenantJwtUser,
   ) {
     if (actor.sub === userId) {
-      throw new ForbiddenException(
-        'You cannot change your own role.',
-      );
+      throw new ForbiddenException('You cannot change your own role.');
     }
     this.assertAccessAdministrator(actor);
     this.assertCustomerRole(dto.role);
-    const user = await this.getCompanyUser(
-      organizationId,
-      userId,
-    );
+    const user = await this.getCompanyUser(organizationId, userId);
     if (user.role === dto.role) {
       return this.mapUser(user);
     }
@@ -148,10 +158,7 @@ export class CompanyUsersService {
       user.role === UserRole.COMPANY_ADMIN &&
       dto.role !== UserRole.COMPANY_ADMIN
     ) {
-      await this.assertAnotherActiveCompanyAdmin(
-        organizationId,
-        user.id,
-      );
+      await this.assertAnotherActiveCompanyAdmin(organizationId, user.id);
     }
     const previousRole = user.role;
     const updated = await this.prisma.user.update({
@@ -188,19 +195,13 @@ export class CompanyUsersService {
         'You cannot change your own account status.',
       );
     }
-    const user = await this.getCompanyUser(
-      organizationId,
-      userId,
-    );
+    const user = await this.getCompanyUser(organizationId, userId);
     if (
       user.role === UserRole.COMPANY_ADMIN &&
       user.isActive &&
       !dto.isActive
     ) {
-      await this.assertAnotherActiveCompanyAdmin(
-        organizationId,
-        user.id,
-      );
+      await this.assertAnotherActiveCompanyAdmin(organizationId, user.id);
     }
     if (user.isActive === dto.isActive) {
       return this.mapUser(user);
@@ -237,41 +238,30 @@ export class CompanyUsersService {
     actor: TenantJwtUser,
   ) {
     if (actor.sub === userId) {
-      throw new ForbiddenException(
-        'You cannot change your own permissions.',
-      );
+      throw new ForbiddenException('You cannot change your own permissions.');
     }
     this.assertAccessAdministrator(actor);
-    const user = await this.getCompanyUser(
-      organizationId,
-      userId,
-    );
+    const user = await this.getCompanyUser(organizationId, userId);
     const duplicatePermissions = dto.permissions
       .map((item) => item.permission)
-      .filter(
-        (permission, index, all) =>
-          all.indexOf(permission) !== index,
-      );
+      .filter((permission, index, all) => all.indexOf(permission) !== index);
     if (duplicatePermissions.length > 0) {
       throw new BadRequestException(
         'Each permission may only be configured once per user.',
       );
     }
-    this.validatePermissionConfiguration(
-      user.role,
-      dto.permissions,
-    );
-    const previousPermissions =
-      await this.prisma.userPermission.findMany({
-        where: {
-          userId: user.id,
-          organizationId,
-        },
-        select: {
-          permission: true,
-          scope: true,
-        },
-      });
+    this.validatePermissionConfiguration(user.role, dto.permissions);
+    const previousPermissions = await this.prisma.userPermission.findMany({
+      where: {
+        userId: user.id,
+        organizationId,
+      },
+      select: {
+        permission: true,
+        scope: true,
+        denied: true,
+      },
+    });
     await this.prisma.$transaction(async (tx) => {
       await tx.userPermission.deleteMany({
         where: {
@@ -286,6 +276,7 @@ export class CompanyUsersService {
             organizationId,
             permission: item.permission,
             scope: item.scope,
+            denied: item.denied ?? false,
           })),
         });
       }
@@ -299,28 +290,21 @@ export class CompanyUsersService {
       actorEmail: actor.email,
       actorRole: actor.role,
       metadata: {
-        previousPermissions:
-          previousPermissions.map((item) => ({
-            permission: item.permission,
-            scope: item.scope,
-          })),
-        newPermissions: dto.permissions.map(
-          (item) => ({
-            permission: item.permission,
-            scope: item.scope,
-          }),
-        ),
+        previousPermissions: previousPermissions.map((item) => ({
+          permission: item.permission,
+          scope: item.scope,
+          denied: item.denied ?? false,
+        })),
+        newPermissions: dto.permissions.map((item) => ({
+          permission: item.permission,
+          scope: item.scope,
+          denied: item.denied ?? false,
+        })),
       },
     });
-    return this.findOne(
-      organizationId,
-      user.id,
-    );
+    return this.findOne(organizationId, user.id);
   }
-  private async getCompanyUser(
-    organizationId: string,
-    userId: string,
-  ) {
+  private async getCompanyUser(organizationId: string, userId: string) {
     const user = await this.prisma.user.findFirst({
       where: {
         id: userId,
@@ -328,9 +312,7 @@ export class CompanyUsersService {
       },
     });
     if (!user) {
-      throw new NotFoundException(
-        'Company user not found',
-      );
+      throw new NotFoundException('Company user not found');
     }
     if (
       user.role === UserRole.SUPER_ADMIN ||
@@ -342,9 +324,7 @@ export class CompanyUsersService {
     }
     return user;
   }
-  private assertAccessAdministrator(
-    actor: TenantJwtUser,
-  ) {
+  private assertAccessAdministrator(actor: TenantJwtUser) {
     if (actor.role !== UserRole.COMPANY_ADMIN) {
       throw new ForbiddenException(
         'Only a Company Admin can manage company access.',
@@ -383,6 +363,7 @@ export class CompanyUsersService {
     permissions: {
       permission: Permission;
       scope: DataScope;
+      denied?: boolean;
     }[],
   ) {
     const accessManagementPermissions: Permission[] = [
@@ -391,6 +372,7 @@ export class CompanyUsersService {
       Permission.MANAGE_ACCESS,
     ];
     const managerForbiddenPermissions: Permission[] = [
+      Permission.APPROVE_EMPLOYEES,
       ...accessManagementPermissions,
       Permission.ADD_EMPLOYEES,
       Permission.PREPARE_PAYROLL_PAYMENTS,
@@ -399,6 +381,7 @@ export class CompanyUsersService {
       Permission.CONFIRM_PAYROLL_PAYMENTS,
     ];
     const employeeForbiddenPermissions: Permission[] = [
+      Permission.APPROVE_EMPLOYEES,
       ...accessManagementPermissions,
       Permission.ADD_EMPLOYEES,
       Permission.MANAGE_EMPLOYEES,
@@ -416,10 +399,9 @@ export class CompanyUsersService {
     ];
     if (
       role === UserRole.MANAGER &&
-      permissions.some((item) =>
-        managerForbiddenPermissions.includes(
-          item.permission,
-        ),
+      permissions.some(
+        (item) =>
+          !item.denied && managerForbiddenPermissions.includes(item.permission),
       )
     ) {
       throw new ForbiddenException(
@@ -428,10 +410,10 @@ export class CompanyUsersService {
     }
     if (
       role === UserRole.EMPLOYEE &&
-      permissions.some((item) =>
-        employeeForbiddenPermissions.includes(
-          item.permission,
-        ),
+      permissions.some(
+        (item) =>
+          !item.denied &&
+          employeeForbiddenPermissions.includes(item.permission),
       )
     ) {
       throw new ForbiddenException(

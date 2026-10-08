@@ -41,7 +41,8 @@ export type SetupEmployee = {
   id: string;
   firstName: string;
   lastName: string;
-  email: string;
+  email?: string | null;
+  employeeCode?: string | null;
   status: string;
   departmentId: string;
   positionId?: string;
@@ -55,7 +56,8 @@ export type SetupEmployee = {
 export type ImportEmployee = {
   firstName: string;
   lastName: string;
-  email: string;
+  email?: string | null;
+  employeeCode?: string | null;
   phoneNumber: string;
   departmentId: string;
   whatsappNumber?: string;
@@ -261,9 +263,11 @@ export function parseEmployeeCsv(
   row.push(field.trim());
   if (row.some(Boolean)) rows.push(row);
   const headers = rows.shift() ?? [],
-    required = ["firstName", "lastName", "email", "phoneNumber"],
+    required = ["firstName", "lastName", "phoneNumber"],
     allowed = [
       ...required,
+      "email",
+      "employeeCode",
       "departmentId",
       "departmentName",
       "positionId",
@@ -332,10 +336,10 @@ export function parseEmployeeCsv(
       )
     )
       throw new Error(`CSV row ${index + 2} needs a department UUID.`);
-    item.email = item.email.toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item.email))
+    item.email = (item.email || "").toLowerCase();
+    if (item.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item.email))
       throw new Error(`CSV row ${index + 2} has an invalid email.`);
-    if (seen.has(item.email))
+    if (item.email && seen.has(item.email))
       throw new Error(`CSV row ${index + 2} duplicates an email.`);
     seen.add(item.email);
     return item as ImportEmployee;
@@ -493,3 +497,10 @@ export const setupEmployeeProfile = (id: string) =>
 
 export const setupCompanyProfile = () =>
   request<Record<string, unknown>>("customer-onboarding/profile");
+
+export const setupApproveBatch = (employeeIds: string[]) =>
+  request<{ results: { id: string; approved: boolean; message?: string }[] }>(
+    "customer-onboarding/employees/approve-batch",
+    "POST",
+    { employeeIds },
+  );

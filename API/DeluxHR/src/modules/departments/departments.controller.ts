@@ -1,3 +1,6 @@
+import { Permission } from '@prisma/client';
+import { PermissionsGuard } from '../../common/access/permissions.guard';
+import { RequirePermissions } from '../../common/access/require-permissions.decorator';
 import { FeaturesGuard } from '../../common/entitlements/features.guard';
 import { RequireFeatures } from '../../common/entitlements/require-features.decorator';
 import { Feature } from '@prisma/client';
@@ -16,10 +19,19 @@ export class DepartmentsController {
   constructor(private readonly departmentsService: DepartmentsService) {}
 
   @Post()
-  create(@Body() dto: CreateDepartmentDto, @CurrentTenantUser() user: TenantJwtUser) {
+  create(
+    @Body() dto: CreateDepartmentDto,
+    @CurrentTenantUser() user: TenantJwtUser,
+  ) {
     return this.departmentsService.create(user.organizationId, dto);
   }
 
+  @Get('positions')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permission.VIEW_EMPLOYEES)
+  positions(@CurrentTenantUser() user: TenantJwtUser) {
+    return this.departmentsService.positions(user.organizationId);
+  }
   @Get()
   findAll(@CurrentTenantUser() user: TenantJwtUser) {
     return this.departmentsService.findAll(user.organizationId);

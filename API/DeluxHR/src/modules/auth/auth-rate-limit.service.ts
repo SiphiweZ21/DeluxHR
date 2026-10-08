@@ -1,47 +1,36 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
-
+import { PrismaService } from '../../prisma/prisma.service';
 @Injectable()
 export class AuthRateLimitService {
-  private readonly attempts = new Map<
-    string,
-    { count: number; resetAt: number }
-  >();
-  private readonly failedLogins = new Map<
-    string,
-    { count: number; resetAt: number }
-  >();
-  private loginEntry(email: string) {
-    const now = Date.now();
-    for (const [key, entry] of this.failedLogins)
-      if (entry.resetAt <= now) this.failedLogins.delete(key);
-    return this.failedLogins.get(email.trim().toLowerCase());
+  constructor(private readonly db: PrismaService) {}
+  private loginKey(email: string) {
+    return `failed-login:${email.trim().toLowerCase()}`;
   }
-  assertLoginAllowed(email: string): void {
-    const entry = this.loginEntry(email);
-    if (entry && entry.count >= 5) this.loginBlocked(entry.resetAt);
+  async assertLoginAllowed(email: string) {
+    const row = await this.db.authThrottle.findUnique({
+      where: { key: this.loginKey(email) },
+    });
+    if (row && row.resetAt > new Date() && row.count >= 5)
+      this.blocked(row.resetAt);
   }
-  recordLoginFailure(email: string): never {
-    const key = email.trim().toLowerCase();
-    const entry = this.loginEntry(key) ?? {
-      count: 0,
-      resetAt: Date.now() + 15 * 60_000,
-    };
-    entry.count += 1;
-    this.failedLogins.set(key, entry);
-    if (entry.count >= 5) this.loginBlocked(entry.resetAt);
+  async recordLoginFailure(email: string): Promise<never> {
+    const row = await this.increment(this.loginKey(email), 15 * 60_000);
+    if (row.count >= 5) this.blocked(row.resetAt);
     throw new HttpException(
       {
         message:
           'Email or password is incorrect. Please check your details and try again.',
-        remainingAttempts: 5 - entry.count,
+        remainingAttempts: 5 - row.count,
       },
       HttpStatus.UNAUTHORIZED,
     );
   }
-  clearLoginFailures(email: string): void {
-    this.failedLogins.delete(email.trim().toLowerCase());
+  async clearLoginFailures(email: string) {
+    await this.db.authThrottle.deleteMany({
+      where: { key: this.loginKey(email) },
+    });
   }
-  private loginBlocked(resetAt: number): never {
+  private blocked(resetAt: Date): never {
     throw new HttpException(
       {
         message:
@@ -49,27 +38,26 @@ export class AuthRateLimitService {
         remainingAttempts: 0,
         retryAfterSeconds: Math.max(
           1,
-          Math.ceil((resetAt - Date.now()) / 1000),
+          Math.ceil((resetAt.getTime() - Date.now()) / 1000),
         ),
       },
-      HttpStatus.TOO_MANY_REQUESTS,
+      429,
     );
   }
-  check(key: string, limit = 10, windowMs = 15 * 60_000): void {
-    const now = Date.now();
-    if (this.attempts.size > 20_000)
-      for (const [k, v] of this.attempts)
-        if (v.resetAt <= now) this.attempts.delete(k);
-    const entry = this.attempts.get(key);
-    if (!entry || entry.resetAt <= now) {
-      this.attempts.set(key, { count: 1, resetAt: now + windowMs });
-      return;
-    }
-    entry.count++;
-    if (entry.count > limit)
-      throw new HttpException(
-        'Too many authentication requests. Try again later.',
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
+  private async increment(key: string, windowMs: number) {
+    const until = new Date(Date.now() + windowMs);
+    const rows = await this.db.$queryRaw<
+      Array<{ count: number; resetAt: Date }>
+    >`
+      INSERT INTO "AuthThrottle" ("key", "count", "resetAt") VALUES (${key}, 1, ${until})
+      ON CONFLICT ("key") DO UPDATE SET
+        "count" = CASE WHEN "AuthThrottle"."resetAt" <= CURRENT_TIMESTAMP THEN 1 ELSE "AuthThrottle"."count" + 1 END,
+        "resetAt" = CASE WHEN "AuthThrottle"."resetAt" <= CURRENT_TIMESTAMP THEN ${until} ELSE "AuthThrottle"."resetAt" END
+      RETURNING "count", "resetAt"`;
+    return rows[0];
+  }
+  async check(key: string, limit = 10, windowMs = 15 * 60_000) {
+    const row = await this.increment(key, windowMs);
+    if (row.count > limit) this.blocked(row.resetAt);
   }
 }

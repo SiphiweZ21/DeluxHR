@@ -21,8 +21,13 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
-    const registration = await this.prisma.platformConfiguration.findUnique({ where: { key: 'REGISTRATION_ENABLED' } });
-    if (registration?.value === 'false') throw new ForbiddenException('Company registration is temporarily unavailable');
+    const registration = await this.prisma.platformConfiguration.findUnique({
+      where: { key: 'REGISTRATION_ENABLED' },
+    });
+    if (registration?.value === 'false')
+      throw new ForbiddenException(
+        'Company registration is temporarily unavailable',
+      );
     const email = dto.email.trim().toLowerCase();
 
     const existing = await this.prisma.user.findUnique({
@@ -53,9 +58,14 @@ export class AuthService {
         },
       });
 
-      await tx.organizationOnboarding.create({ data: { organizationId: organization.id } });
-      for (const grant of ROLE_PERMISSION_PRESETS[UserRole.COMPANY_ADMIN] ?? []) {
-        await tx.userPermission.create({ data: { organizationId: organization.id, userId: user.id, ...grant } });
+      await tx.organizationOnboarding.create({
+        data: { organizationId: organization.id },
+      });
+      for (const grant of ROLE_PERMISSION_PRESETS[UserRole.COMPANY_ADMIN] ??
+        []) {
+        await tx.userPermission.create({
+          data: { organizationId: organization.id, userId: user.id, ...grant },
+        });
       }
 
       return { user, organization };
@@ -122,11 +132,20 @@ export class AuthService {
 
       case 'PENDING':
         if (user.role === 'COMPANY_ADMIN') {
-          return { accessToken: this.signToken(user), user: this.mapUser(user),
-            organization: { id: user.organization.id, name: user.organization.name,
-              status: user.organization.status }, onboardingOnly: true };
+          return {
+            accessToken: this.signToken(user),
+            user: this.mapUser(user),
+            organization: {
+              id: user.organization.id,
+              name: user.organization.name,
+              status: user.organization.status,
+            },
+            onboardingOnly: true,
+          };
         }
-        throw new ForbiddenException('Your company registration is awaiting DeluxHR approval.');
+        throw new ForbiddenException(
+          'Your company registration is awaiting DeluxHR approval.',
+        );
 
       case 'SUSPENDED':
         throw new ForbiddenException(
@@ -178,8 +197,13 @@ export class AuthService {
         );
       }
 
-      if (user.organization.status !== 'ACTIVE' &&
-          !(user.organization.status === 'PENDING' && user.role === 'COMPANY_ADMIN')) {
+      if (
+        user.organization.status !== 'ACTIVE' &&
+        !(
+          user.organization.status === 'PENDING' &&
+          user.role === 'COMPANY_ADMIN'
+        )
+      ) {
         throw new ForbiddenException(
           'Your organization does not currently have access to DeluxHR.',
         );
@@ -205,6 +229,7 @@ export class AuthService {
   private signToken(user: User): string {
     return this.jwt.sign({
       sub: user.id,
+      tokenVersion: user.tokenVersion,
       email: user.email,
       organizationId: user.organizationId,
       role: user.role,

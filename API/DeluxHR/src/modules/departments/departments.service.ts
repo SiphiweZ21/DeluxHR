@@ -51,6 +51,12 @@ export class DepartmentsService {
     return department;
   }
 
+  positions(organizationId: string) {
+    return this.prisma.position.findMany({
+      where: { organizationId },
+      orderBy: { name: 'asc' },
+    });
+  }
   findAll(organizationId: string) {
     return this.prisma.department.findMany({
       where: { organizationId },

@@ -225,7 +225,7 @@ export const values = (d: FormData) =>
 export const employeeOptions = (employees: SetupEmployee[]) =>
   employees.map((e) => ({
     id: e.id,
-    name: `${e.firstName} ${e.lastName} · ${e.email}`,
+    name: `${e.firstName} ${e.lastName} · ${e.employeeCode || e.email || "No code"}`,
   }));
 export async function refreshed(task: () => Promise<void>) {
   try {

@@ -24,16 +24,10 @@ import { UpdateCompanyUserRoleDto } from './dto/update-company-user-role.dto';
 import { UpdateCompanyUserStatusDto } from './dto/update-company-user-status.dto';
 import { SetUserPermissionsDto } from './dto/set-user-permissions.dto';
 
-@UseGuards(
-  JwtAuthGuard,
-  TenantAccessGuard,
-  PermissionsGuard,
-)
+@UseGuards(JwtAuthGuard, TenantAccessGuard, PermissionsGuard)
 @Controller('company-users')
 export class CompanyUsersController {
-  constructor(
-    private readonly companyUsersService: CompanyUsersService,
-  ) {}
+  constructor(private readonly companyUsersService: CompanyUsersService) {}
 
   @Post()
   @RequirePermissions(Permission.MANAGE_USERS)
@@ -41,21 +35,28 @@ export class CompanyUsersController {
     @Body() dto: CreateCompanyUserDto,
     @CurrentTenantUser() user: TenantJwtUser,
   ) {
-    return this.companyUsersService.create(
-      user.organizationId,
-      dto,
-      user,
-    );
+    return this.companyUsersService.create(user.organizationId, dto, user);
+  }
+
+  @Get('access-presets')
+  @RequirePermissions(Permission.MANAGE_ACCESS)
+  accessPresets() {
+    return this.companyUsersService.accessPresets();
+  }
+
+  @Get(':userId/effective-permissions')
+  @RequirePermissions(Permission.MANAGE_ACCESS)
+  effective(
+    @Param('userId') id: string,
+    @CurrentTenantUser() user: TenantJwtUser,
+  ) {
+    return this.companyUsersService.effective(user.organizationId, id);
   }
 
   @Get()
   @RequirePermissions(Permission.MANAGE_USERS)
-  list(
-    @CurrentTenantUser() user: TenantJwtUser,
-  ) {
-    return this.companyUsersService.list(
-      user.organizationId,
-    );
+  list(@CurrentTenantUser() user: TenantJwtUser) {
+    return this.companyUsersService.list(user.organizationId);
   }
 
   @Get(':userId')
@@ -64,10 +65,7 @@ export class CompanyUsersController {
     @Param('userId') userId: string,
     @CurrentTenantUser() user: TenantJwtUser,
   ) {
-    return this.companyUsersService.findOne(
-      user.organizationId,
-      userId,
-    );
+    return this.companyUsersService.findOne(user.organizationId, userId);
   }
 
   @Patch(':userId/role')

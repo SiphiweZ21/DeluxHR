@@ -11,6 +11,9 @@ export type EffectivePermission = {
 };
 
 const ORGANIZATION_ONLY_PERMISSIONS = new Set<Permission>([
+  Permission.ADD_EMPLOYEES,
+  Permission.MANAGE_EMPLOYEES,
+  Permission.APPROVE_EMPLOYEES,
   Permission.VIEW_EMPLOYEE_DOCUMENTS,
   Permission.MANAGE_EMPLOYEE_DOCUMENTS,
   Permission.VERIFY_EMPLOYEE_DOCUMENTS,
@@ -47,7 +50,6 @@ const ATTENDANCE_WRITE_PERMISSIONS = new Set<Permission>([
   Permission.MANAGE_ATTENDANCE,
 ]);
 
-
 @Injectable()
 export class AccessControlService {
   constructor(private readonly prisma: PrismaService) {}
@@ -65,6 +67,7 @@ export class AccessControlService {
       select: {
         permission: true,
         scope: true,
+        denied: true,
       },
     });
 
@@ -77,6 +80,10 @@ export class AccessControlService {
     }
 
     for (const grant of explicit) {
+      if (grant.denied) {
+        effective.delete(grant.permission);
+        continue;
+      }
       if (this.isGrantAllowed(user.role, grant.permission, grant.scope)) {
         effective.set(grant.permission, grant.scope);
       }

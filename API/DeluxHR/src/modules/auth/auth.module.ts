@@ -1,3 +1,5 @@
+import { PasswordRecoveryService } from './password-recovery.service';
+import { RecoveryMailService } from './recovery-mail.service';
 import { AuthRateLimitService } from './auth-rate-limit.service';
 import { requiredJwtSecret } from '../../common/auth/jwt-secret';
 import { Module } from '@nestjs/common';
@@ -22,7 +24,14 @@ import { JwtStrategy } from '../../common/auth/jwt.strategy';
       }),
     }),
   ],
-  providers: [AuthRateLimitService, AuthService, PrismaService, JwtStrategy],
+  providers: [
+    PasswordRecoveryService,
+    RecoveryMailService,
+    AuthRateLimitService,
+    AuthService,
+    PrismaService,
+    JwtStrategy,
+  ],
   controllers: [AuthController],
 })
 export class AuthModule {}

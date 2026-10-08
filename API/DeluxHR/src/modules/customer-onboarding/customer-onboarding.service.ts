@@ -128,6 +128,7 @@ export class CustomerOnboardingService {
             firstName: true,
             lastName: true,
             email: true,
+            employeeCode: true,
             status: true,
             departmentId: true,
             positionId: true,
@@ -539,5 +540,7 @@ export class CustomerOnboardingService {
       return item;
     });
   }
-  async readiness(orgId: string) { return companyReadiness(this.db, orgId); }
+  async readiness(orgId: string) {
+    return companyReadiness(this.db, orgId);
+  }
 }

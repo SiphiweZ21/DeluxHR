@@ -154,6 +154,11 @@ export function LoginForm() {
           Register here
         </Link>
       </p>
+      <p className="text-center text-sm">
+        <Link href="/forgot-password" className="font-semibold text-indigo-600">
+          Forgot password?
+        </Link>
+      </p>
     </form>
   );
 }

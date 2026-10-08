@@ -1,3 +1,4 @@
+import { BatchApproveEmployeesDto } from './dto/batch-approve-employees.dto';
 import {
   Body,
   Controller,
@@ -7,10 +8,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import {
-  Feature,
-  Permission,
-} from '@prisma/client';
+import { Feature, Permission } from '@prisma/client';
 
 import { FeaturesGuard } from '../../common/entitlements/features.guard';
 import { RequireFeatures } from '../../common/entitlements/require-features.decorator';
@@ -29,39 +27,24 @@ import { BulkCreateEmployeesDto } from './dto/bulk-create-employees.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { EmployeeLifecycleReasonDto } from './dto/employee-lifecycle-reason.dto';
 
-@UseGuards(
-  JwtAuthGuard,
-  TenantAccessGuard,
-  FeaturesGuard,
-  PermissionsGuard,
-)
+@UseGuards(JwtAuthGuard, TenantAccessGuard, FeaturesGuard, PermissionsGuard)
 @RequireFeatures(Feature.CORE_HR)
 @Controller('employees')
 export class EmployeesController {
-  constructor(
-    private readonly employeesService: EmployeesService,
-  ) {}
+  constructor(private readonly employeesService: EmployeesService) {}
 
   @Post()
-  @RequirePermissions(
-    Permission.ADD_EMPLOYEES,
-  )
+  @RequirePermissions(Permission.ADD_EMPLOYEES)
   create(
     @Body() dto: CreateEmployeeDto,
     @CurrentTenantUser()
     user: TenantJwtUser,
   ) {
-    return this.employeesService.create(
-      user.organizationId,
-      dto,
-      user,
-    );
+    return this.employeesService.create(user.organizationId, dto, user);
   }
 
   @Post('bulk')
-  @RequirePermissions(
-    Permission.ADD_EMPLOYEES,
-  )
+  @RequirePermissions(Permission.ADD_EMPLOYEES)
   bulkCreate(
     @Body()
     dto: BulkCreateEmployeesDto,
@@ -75,39 +58,41 @@ export class EmployeesController {
     );
   }
 
+  @Post('approve-batch')
+  @RequirePermissions(Permission.APPROVE_EMPLOYEES)
+  approveBatch(
+    @Body() dto: BatchApproveEmployeesDto,
+    @CurrentTenantUser() user: TenantJwtUser,
+  ) {
+    return this.employeesService.approveBatch(
+      user.organizationId,
+      dto.employeeIds,
+      user,
+    );
+  }
+
   @Get()
-  @RequirePermissions(
-    Permission.VIEW_EMPLOYEES,
-  )
+  @RequirePermissions(Permission.VIEW_EMPLOYEES)
   list(
     @CurrentTenantUser()
     user: TenantJwtUser,
   ) {
-    return this.employeesService.list(
-      user.organizationId,
-    );
+    return this.employeesService.list(user.organizationId);
   }
 
   @Get(':employeeId')
-  @RequirePermissions(
-    Permission.VIEW_EMPLOYEES,
-  )
+  @RequirePermissions(Permission.VIEW_EMPLOYEES)
   findOne(
     @Param('employeeId')
     employeeId: string,
     @CurrentTenantUser()
     user: TenantJwtUser,
   ) {
-    return this.employeesService.findOne(
-      user.organizationId,
-      employeeId,
-    );
+    return this.employeesService.findOne(user.organizationId, employeeId);
   }
 
   @Patch(':employeeId')
-  @RequirePermissions(
-    Permission.MANAGE_EMPLOYEES,
-  )
+  @RequirePermissions(Permission.MANAGE_EMPLOYEES)
   update(
     @Param('employeeId')
     employeeId: string,
@@ -124,9 +109,7 @@ export class EmployeesController {
   }
 
   @Post(':employeeId/activate')
-  @RequirePermissions(
-    Permission.APPROVE_EMPLOYEES,
-  )
+  @RequirePermissions(Permission.APPROVE_EMPLOYEES)
   activate(
     @Param('employeeId')
     employeeId: string,
@@ -141,9 +124,7 @@ export class EmployeesController {
   }
 
   @Post(':employeeId/suspend')
-  @RequirePermissions(
-    Permission.MANAGE_EMPLOYEES,
-  )
+  @RequirePermissions(Permission.MANAGE_EMPLOYEES)
   suspend(
     @Param('employeeId')
     employeeId: string,
@@ -161,9 +142,7 @@ export class EmployeesController {
   }
 
   @Post(':employeeId/reactivate')
-  @RequirePermissions(
-    Permission.MANAGE_EMPLOYEES,
-  )
+  @RequirePermissions(Permission.MANAGE_EMPLOYEES)
   reactivate(
     @Param('employeeId')
     employeeId: string,
@@ -181,9 +160,7 @@ export class EmployeesController {
   }
 
   @Post(':employeeId/terminate')
-  @RequirePermissions(
-    Permission.MANAGE_EMPLOYEES,
-  )
+  @RequirePermissions(Permission.MANAGE_EMPLOYEES)
   terminate(
     @Param('employeeId')
     employeeId: string,

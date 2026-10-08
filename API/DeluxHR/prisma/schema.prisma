@@ -647,6 +647,7 @@ model User {
   id             String   @id @default(uuid())
   fullName       String
   email          String   @unique
+  tokenVersion   Int      @default(0)
   passwordHash   String
   role           UserRole
   isActive       Boolean  @default(true)
@@ -656,6 +657,7 @@ model User {
 
   organization Organization?    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employee     Employee?
+  passwordResets PasswordResetToken[]
   permissions  UserPermission[]
 
   @@index([organizationId])
@@ -668,6 +670,7 @@ model UserPermission {
   organizationId String
   permission     Permission
   scope          DataScope
+  denied         Boolean @default(false)
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @default(now()) @updatedAt
 
@@ -705,7 +708,8 @@ model Employee {
   employeeNumber  String
   firstName       String
   lastName        String
-  email           String
+  email           String?
+  employeeCode    String?
   organizationId  String
   departmentId    String
   userId          String? @unique
@@ -775,6 +779,7 @@ model Employee {
   @@unique([organizationId,id])
   @@unique([organizationId, email])
   @@unique([organizationId, employeeNumber])
+  @@unique([organizationId, employeeCode])
   @@index([organizationId])
   @@index([departmentId])
   @@index([organizationId, status])
@@ -2944,4 +2949,21 @@ model CompanyOnboardingDocument {
  reviewedAt DateTime?
  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
  @@index([organizationId,createdAt])
+}
+
+model PasswordResetToken {
+  id String @id @default(uuid())
+  tokenHash String @unique
+  userId String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@index([expiresAt])
+}
+model AuthThrottle {
+  key String @id
+  count Int @default(0)
+  resetAt DateTime
+  @@index([resetAt])
 }

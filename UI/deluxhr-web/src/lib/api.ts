@@ -38,21 +38,42 @@ export type Department = {
 type CreateEmployeePayload = {
   firstName: string;
   lastName: string;
-  email: string;
+  email?: string | null;
   departmentId: string;
   phoneNumber: string;
+  employeeCode?: string | null;
+  positionId?: string;
+  jobTitle?: string;
+  employmentType?: string;
+  employmentStartDate?: string;
+  identityType?: string;
+  identityNumber?: string;
   whatsappNumber?: string;
 };
 
 export type Employee = {
   id: string;
+  employeeCode?: string | null;
+  employeeNumber?: string;
+  createdByUserId?: string;
+  positionId?: string;
+  jobTitle?: string;
+  employmentType?: string;
+  employmentStartDate?: string;
+  identityType?: string;
+  identityNumber?: string;
   firstName: string;
   lastName: string;
-  email: string;
+  email?: string | null;
   organizationId: string;
   departmentId: string;
   userId?: string | null;
-  status?: "ACTIVE" | "INACTIVE" | "TERMINATED";
+  status?:
+    | "ACTIVE"
+    | "SUSPENDED"
+    | "PENDING_VERIFICATION"
+    | "INACTIVE"
+    | "TERMINATED";
   phoneNumber?: string | null;
   whatsappNumber?: string | null;
   whatsappOptInAt?: string | null;
@@ -444,7 +465,14 @@ function ensureArray<T>(value: T[] | null | unknown): T[] {
 }
 
 export class LoginError extends Error {
-  constructor(message: string, public remainingAttempts?: number, public retryAfterSeconds?: number) { super(message); this.name = "LoginError"; }
+  constructor(
+    message: string,
+    public remainingAttempts?: number,
+    public retryAfterSeconds?: number,
+  ) {
+    super(message);
+    this.name = "LoginError";
+  }
 }
 
 export async function loginUser({
@@ -452,25 +480,47 @@ export async function loginUser({
   password,
 }: LoginPayload): Promise<LoginResponse> {
   let res: Response;
-  try { res = await fetch(`${API_BASE_URL}/auth/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ email, password }),
-  });
-
-  } catch { throw new LoginError("We could not connect to DeluxHR. Check your connection and try again."); }
+  try {
+    res = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email, password }),
+    });
+  } catch {
+    throw new LoginError(
+      "We could not connect to DeluxHR. Check your connection and try again.",
+    );
+  }
   const data = await res.json().catch(() => null);
   if (!res.ok) {
-    const remaining = Number.isInteger(data?.remainingAttempts) ? data.remainingAttempts : undefined;
-    const retry = res.status === 429 ? Number(data?.retryAfterSeconds ?? res.headers.get("Retry-After") ?? 900) : undefined;
-    const message = res.status === 401 ? "Email or password is incorrect. Please check your details and try again."
-      : res.status === 429 ? "Too many sign-in attempts. Please wait before trying again."
-      : res.status >= 500 ? "DeluxHR could not complete your sign-in. Please try again shortly."
-      : res.status === 400 ? "Please enter a valid email address and password."
-      : typeof data?.message === "string" ? data.message : "Unable to sign in. Please contact your administrator.";
-    throw new LoginError(message, remaining, retry && Number.isFinite(retry) && retry > 0 ? retry : undefined);
+    const remaining = Number.isInteger(data?.remainingAttempts)
+      ? data.remainingAttempts
+      : undefined;
+    const retry =
+      res.status === 429
+        ? Number(
+            data?.retryAfterSeconds ?? res.headers.get("Retry-After") ?? 900,
+          )
+        : undefined;
+    const message =
+      res.status === 401
+        ? "Email or password is incorrect. Please check your details and try again."
+        : res.status === 429
+          ? "Too many sign-in attempts. Please wait before trying again."
+          : res.status >= 500
+            ? "DeluxHR could not complete your sign-in. Please try again shortly."
+            : res.status === 400
+              ? "Please enter a valid email address and password."
+              : typeof data?.message === "string"
+                ? data.message
+                : "Unable to sign in. Please contact your administrator.";
+    throw new LoginError(
+      message,
+      remaining,
+      retry && Number.isFinite(retry) && retry > 0 ? retry : undefined,
+    );
   }
   return data as LoginResponse;
 }
@@ -515,28 +565,10 @@ export async function getEmployees(): Promise<Employee[]> {
   return ensureArray<Employee>(data);
 }
 
-export async function createEmployee({
-  firstName,
-  lastName,
-  email,
-  departmentId,
-  phoneNumber,
-  whatsappNumber,
-}: CreateEmployeePayload): Promise<Employee> {
-  const res = await fetch(`${API_BASE_URL}/employees`, {
-    method: "POST",
-    headers: getAuthHeaders(),
-    body: JSON.stringify({
-      firstName,
-      lastName,
-      email,
-      departmentId,
-      phoneNumber,
-      whatsappNumber,
-    }),
-  });
-
-  return handleResponse<Employee>(res, "Failed to create employee");
+export async function createEmployee(
+  payload: CreateEmployeePayload,
+): Promise<Employee> {
+  return workforceRequest<Employee>("employees", "POST", payload);
 }
 
 export type BulkEmployeeInput = CreateEmployeePayload;

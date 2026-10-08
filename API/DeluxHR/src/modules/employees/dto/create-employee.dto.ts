@@ -1,3 +1,4 @@
+import { Transform } from 'class-transformer';
 import { EmploymentType, IdentityType } from '@prisma/client';
 import {
   IsEmail,
@@ -11,6 +12,7 @@ import {
 } from 'class-validator';
 
 export class CreateEmployeeDto {
+  @IsOptional() @IsString() employeeCode?: string | null;
   @IsOptional() @IsUUID() positionId?: string;
   @IsOptional() @IsString() @MaxLength(120) jobTitle?: string;
   @IsOptional() @IsEnum(EmploymentType) employmentType?: EmploymentType;
@@ -34,8 +36,12 @@ export class CreateEmployeeDto {
   @IsNotEmpty()
   lastName!: string;
 
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() || null : value,
+  )
   @IsEmail()
-  email!: string;
+  email?: string | null;
 
   @IsString()
   @IsNotEmpty()

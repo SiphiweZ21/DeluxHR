@@ -67,15 +67,12 @@ export const ROLE_PERMISSION_PRESETS: Partial<
   [UserRole.EXECUTIVE]: [
     Permission.VIEW_EMPLOYEES,
     Permission.ADD_EMPLOYEES,
+    Permission.APPROVE_EMPLOYEES,
 
     Permission.VIEW_EMPLOYEE_PAYMENT_DETAILS,
     Permission.MANAGE_EMPLOYEE_PAYMENT_DETAILS,
 
     Permission.VIEW_ATTENDANCE,
-
-    Permission.VIEW_PAYROLL,
-    Permission.REVIEW_PAYROLL,
-    Permission.VIEW_ALL_PAYSLIPS,
 
     Permission.VIEW_EXECUTIVE_DASHBOARD,
     Permission.VIEW_WORKFORCE_COST,

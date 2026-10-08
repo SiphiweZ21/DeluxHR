@@ -1,3 +1,8 @@
+import { PasswordRecoveryService } from './password-recovery.service';
+import {
+  ForgotPasswordDto,
+  ResetPasswordDto,
+} from './dto/password-recovery.dto';
 import type { Response } from 'express';
 import { AuthRateLimitService } from './auth-rate-limit.service';
 import {
@@ -19,13 +24,14 @@ import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard';
 @Controller('auth')
 export class AuthController {
   constructor(
+    private recovery: PasswordRecoveryService,
     private auth: AuthService,
     private rateLimit: AuthRateLimitService,
   ) {}
 
   @Post('register')
-  register(@Body() dto: RegisterDto, @Req() req: any) {
-    this.rateLimit.check(
+  async register(@Body() dto: RegisterDto, @Req() req: any) {
+    await this.rateLimit.check(
       `register:${req.socket.remoteAddress ?? 'unknown'}`,
       5,
     );
@@ -40,18 +46,18 @@ export class AuthController {
   ) {
     const email = dto.email.trim().toLowerCase();
     try {
-      this.rateLimit.check(
+      await this.rateLimit.check(
         `login:${req.socket.remoteAddress ?? 'unknown'}`,
         20,
       );
-      this.rateLimit.assertLoginAllowed(email);
+      await this.rateLimit.assertLoginAllowed(email);
       try {
         const result = await this.auth.login(dto);
-        this.rateLimit.clearLoginFailures(email);
+        await this.rateLimit.clearLoginFailures(email);
         return result;
       } catch (error) {
         if (error instanceof UnauthorizedException)
-          this.rateLimit.recordLoginFailure(email);
+          await this.rateLimit.recordLoginFailure(email);
         throw error;
       }
     } catch (error) {
@@ -65,6 +71,27 @@ export class AuthController {
       }
       throw error;
     }
+  }
+
+  @Post('forgot-password')
+  async forgotPassword(@Body() dto: ForgotPasswordDto, @Req() req: any) {
+    await this.rateLimit.check(
+      `recovery-ip:${req.socket.remoteAddress ?? 'unknown'}`,
+      20,
+    );
+    await this.rateLimit.check(
+      `recovery-email:${dto.email.trim().toLowerCase()}`,
+      3,
+    );
+    return this.recovery.request(dto.email);
+  }
+  @Post('reset-password')
+  async resetPassword(@Body() dto: ResetPasswordDto, @Req() req: any) {
+    await this.rateLimit.check(
+      `reset-ip:${req.socket.remoteAddress ?? 'unknown'}`,
+      20,
+    );
+    return this.recovery.reset(dto.token, dto.password);
   }
 
   @UseGuards(JwtAuthGuard)

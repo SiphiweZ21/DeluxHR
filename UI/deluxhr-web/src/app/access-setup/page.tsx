@@ -1,11 +1,8 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import {
-  FormEvent,
-  useEffect,
-  useState,
-} from 'react';
+import Link from "next/link";
+import { AccessPresets } from "../../components/access-presets";
+import { FormEvent, useEffect, useState } from "react";
 
 import {
   createCompanyUser,
@@ -14,7 +11,7 @@ import {
   updateCompanyUserStatus,
   type CompanyUser,
   type CompanyUserRole,
-} from '../../lib/api';
+} from "../../lib/api";
 
 const roles: Array<{
   value: CompanyUserRole;
@@ -22,99 +19,74 @@ const roles: Array<{
   description: string;
 }> = [
   {
-    value: 'COMPANY_ADMIN',
-    label: 'Company Admin',
-    description:
-      'Manages company configuration and user access.',
+    value: "COMPANY_ADMIN",
+    label: "Company Admin",
+    description: "Manages company configuration and user access.",
   },
   {
-    value: 'EXECUTIVE',
-    label: 'Executive',
-    description:
-      'Executive-level access to company information and insights.',
+    value: "EXECUTIVE",
+    label: "Executive (Executive Leadership)",
+    description: "Executive-level access to company information and insights.",
   },
   {
-    value: 'HR_ADMIN',
-    label: 'HR Admin',
-    description:
-      'Manages people and HR operations.',
+    value: "HR_ADMIN",
+    label: "HR Admin (Human Resources & Training)",
+    description: "Manages people and HR operations.",
   },
   {
-    value: 'PAYROLL_ADMIN',
-    label: 'Payroll Admin',
-    description:
-      'Manages payroll-related operations.',
+    value: "PAYROLL_ADMIN",
+    label: "Payroll Admin",
+    description: "Manages payroll-related operations.",
   },
   {
-    value: 'MANAGER',
-    label: 'Manager',
-    description:
-      'Management access for permitted team functions.',
+    value: "MANAGER",
+    label: "Manager",
+    description: "Management access for permitted team functions.",
   },
   {
-    value: 'EMPLOYEE',
-    label: 'Employee',
-    description:
-      'Limited employee web access when explicitly required.',
+    value: "EMPLOYEE",
+    label: "Employee",
+    description: "Limited employee web access when explicitly required.",
   },
 ];
 
-function roleLabel(
-  role: CompanyUserRole,
-) {
-  return (
-    roles.find(
-      (item) => item.value === role,
-    )?.label ?? role
-  );
+function roleLabel(role: CompanyUserRole) {
+  return roles.find((item) => item.value === role)?.label ?? role;
 }
 
 export default function AccessSetupPage() {
-  const [users, setUsers] =
-    useState<CompanyUser[]>([]);
+  const [users, setUsers] = useState<CompanyUser[]>([]);
 
-  const [isLoading, setIsLoading] =
-    useState(true);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const [isSubmitting, setIsSubmitting] =
-    useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [busyUserId, setBusyUserId] =
-    useState<string | null>(null);
+  const [busyUserId, setBusyUserId] = useState<string | null>(null);
 
-  const [showAddUser, setShowAddUser] =
-    useState(false);
+  const [showAddUser, setShowAddUser] = useState(false);
 
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
-  const [fullName, setFullName] =
-    useState('');
+  const [fullName, setFullName] = useState("");
 
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState("");
 
-  const [password, setPassword] =
-    useState('');
+  const [password, setPassword] = useState("");
 
-  const [role, setRole] =
-    useState<CompanyUserRole>(
-      'HR_ADMIN',
-    );
+  const [role, setRole] = useState<CompanyUserRole>("HR_ADMIN");
 
   async function load() {
     try {
       setIsLoading(true);
-      setError('');
+      setError("");
 
-      const result =
-        await getCompanyUsers();
+      const result = await getCompanyUsers();
 
       setUsers(result);
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to load company users.',
+        err instanceof Error ? err.message : "Failed to load company users.",
       );
     } finally {
       setIsLoading(false);
@@ -125,29 +97,19 @@ export default function AccessSetupPage() {
     void load();
   }, []);
 
-  async function handleCreate(
-    event: FormEvent<HTMLFormElement>,
-  ) {
+  async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    setError('');
-    setMessage('');
+    setError("");
+    setMessage("");
 
-    if (
-      !fullName.trim() ||
-      !email.trim() ||
-      !password
-    ) {
-      setError(
-        'Complete all required user details.',
-      );
+    if (!fullName.trim() || !email.trim() || !password) {
+      setError("Complete all required user details.");
       return;
     }
 
     if (password.length < 12) {
-      setError(
-        'Temporary password must be at least 12 characters.',
-      );
+      setError("Temporary password must be at least 12 characters.");
       return;
     }
 
@@ -156,29 +118,23 @@ export default function AccessSetupPage() {
 
       await createCompanyUser({
         fullName: fullName.trim(),
-        email: email
-          .trim()
-          .toLowerCase(),
+        email: email.trim().toLowerCase(),
         password,
         role,
       });
 
-      setFullName('');
-      setEmail('');
-      setPassword('');
-      setRole('HR_ADMIN');
+      setFullName("");
+      setEmail("");
+      setPassword("");
+      setRole("HR_ADMIN");
       setShowAddUser(false);
 
       await load();
 
-      setMessage(
-        'Company user created successfully.',
-      );
+      setMessage("Company user created successfully.");
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to create company user.',
+        err instanceof Error ? err.message : "Failed to create company user.",
       );
     } finally {
       setIsSubmitting(false);
@@ -195,63 +151,43 @@ export default function AccessSetupPage() {
 
     try {
       setBusyUserId(user.id);
-      setError('');
-      setMessage('');
+      setError("");
+      setMessage("");
 
-      await updateCompanyUserRole(
-        user.id,
-        nextRole,
-      );
+      await updateCompanyUserRole(user.id, nextRole);
 
       await load();
 
-      setMessage(
-        `${user.fullName}'s access role was updated.`,
-      );
+      setMessage(`${user.fullName}'s access role was updated.`);
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to update user role.',
+        err instanceof Error ? err.message : "Failed to update user role.",
       );
     } finally {
       setBusyUserId(null);
     }
   }
 
-  async function handleStatusChange(
-    user: CompanyUser,
-  ) {
-    const action = user.isActive
-      ? 'deactivate'
-      : 'activate';
+  async function handleStatusChange(user: CompanyUser) {
+    const action = user.isActive ? "deactivate" : "activate";
 
     if (
-      !window.confirm(
-        `Are you sure you want to ${action} ${user.fullName}?`,
-      )
+      !window.confirm(`Are you sure you want to ${action} ${user.fullName}?`)
     ) {
       return;
     }
 
     try {
       setBusyUserId(user.id);
-      setError('');
-      setMessage('');
+      setError("");
+      setMessage("");
 
-      await updateCompanyUserStatus(
-        user.id,
-        !user.isActive,
-      );
+      await updateCompanyUserStatus(user.id, !user.isActive);
 
       await load();
 
       setMessage(
-        `${user.fullName} was ${
-          user.isActive
-            ? 'deactivated'
-            : 'activated'
-        }.`,
+        `${user.fullName} was ${user.isActive ? "deactivated" : "activated"}.`,
       );
     } catch (err) {
       setError(
@@ -265,9 +201,7 @@ export default function AccessSetupPage() {
   }
 
   const activeAdmins = users.filter(
-    (user) =>
-      user.role === 'COMPANY_ADMIN' &&
-      user.isActive,
+    (user) => user.role === "COMPANY_ADMIN" && user.isActive,
   ).length;
 
   return (
@@ -283,9 +217,8 @@ export default function AccessSetupPage() {
           </h1>
 
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-            Manage the people who are
-            authorised to access your DeluxHR
-            web workspace.
+            Manage the people who are authorised to access your DeluxHR web
+            workspace.
           </p>
         </div>
 
@@ -298,53 +231,31 @@ export default function AccessSetupPage() {
           </Link>
 
           <button
-            onClick={() =>
-              setShowAddUser(
-                (current) => !current,
-              )
-            }
+            onClick={() => setShowAddUser((current) => !current)}
             className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-indigo-200 hover:bg-indigo-500"
           >
-            {showAddUser
-              ? 'Close'
-              : '+ Add company user'}
+            {showAddUser ? "Close" : "+ Add company user"}
           </button>
         </div>
       </section>
 
-      {error && (
-        <Notice kind="error">
-          {error}
-        </Notice>
-      )}
+      <AccessPresets key={users.map(user => user.id + user.role).join("|")} />
+      {error && <Notice kind="error">{error}</Notice>}
 
-      {message && (
-        <Notice kind="success">
-          {message}
-        </Notice>
-      )}
+      {message && <Notice kind="success">{message}</Notice>}
 
       <section className="grid gap-4 sm:grid-cols-3">
-        <SummaryCard
-          label="Company users"
-          value={users.length}
-        />
+        <SummaryCard label="Company users" value={users.length} />
 
         <SummaryCard
           label="Active users"
-          value={
-            users.filter(
-              (user) => user.isActive,
-            ).length
-          }
+          value={users.filter((user) => user.isActive).length}
         />
 
         <SummaryCard
           label="Active Company Admins"
           value={activeAdmins}
-          highlight={
-            activeAdmins > 0
-          }
+          highlight={activeAdmins > 0}
         />
       </section>
 
@@ -356,17 +267,12 @@ export default function AccessSetupPage() {
             </h2>
 
             <p className="mt-1 text-sm leading-6 text-slate-500">
-              Create web access only for
-              people who need administrative,
-              HR, payroll, executive or
-              management access.
+              Create web access only for people who need administrative, HR,
+              payroll, executive or management access.
             </p>
           </div>
 
-          <form
-            onSubmit={handleCreate}
-            className="space-y-5"
-          >
+          <form onSubmit={handleCreate} className="space-y-5">
             <div className="grid gap-5 md:grid-cols-2">
               <Field
                 label="Full name"
@@ -398,54 +304,32 @@ export default function AccessSetupPage() {
               <label className="block">
                 <span className="mb-2 block text-sm font-semibold text-slate-700">
                   Access role
-                  <span className="ml-1 text-rose-500">
-                    *
-                  </span>
+                  <span className="ml-1 text-rose-500">*</span>
                 </span>
 
                 <select
                   value={role}
                   onChange={(event) =>
-                    setRole(
-                      event.target
-                        .value as CompanyUserRole,
-                    )
+                    setRole(event.target.value as CompanyUserRole)
                   }
                   className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                 >
-                  {roles.map(
-                    (option) => (
-                      <option
-                        key={
-                          option.value
-                        }
-                        value={
-                          option.value
-                        }
-                      >
-                        {option.label}
-                      </option>
-                    ),
-                  )}
+                  {roles.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
 
                 <p className="mt-2 text-xs leading-5 text-slate-400">
-                  {
-                    roles.find(
-                      (item) =>
-                        item.value ===
-                        role,
-                    )?.description
-                  }
+                  {roles.find((item) => item.value === role)?.description}
                 </p>
               </label>
             </div>
 
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
-              Company roles control system
-              access. A person's job title
-              does not automatically grant
-              DeluxHR permissions.
+              Company roles control system access. A person's job title does not
+              automatically grant DeluxHR permissions.
             </div>
 
             <div className="flex justify-end">
@@ -454,9 +338,7 @@ export default function AccessSetupPage() {
                 type="submit"
                 className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isSubmitting
-                  ? 'Creating…'
-                  : 'Create company user'}
+                {isSubmitting ? "Creating…" : "Create company user"}
               </button>
             </div>
           </form>
@@ -466,13 +348,10 @@ export default function AccessSetupPage() {
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col justify-between gap-3 border-b border-slate-100 px-5 py-5 sm:flex-row sm:items-center">
           <div>
-            <h2 className="font-semibold text-slate-950">
-              Company users
-            </h2>
+            <h2 className="font-semibold text-slate-950">Company users</h2>
 
             <p className="mt-1 text-xs text-slate-500">
-              Authorised web users for this
-              company.
+              Authorised web users for this company.
             </p>
           </div>
 
@@ -499,44 +378,30 @@ export default function AccessSetupPage() {
               </h3>
 
               <p className="mt-2 text-sm leading-6 text-slate-500">
-                Add an authorised company
-                user to begin configuring
-                access.
+                Add an authorised company user to begin configuring access.
               </p>
             </div>
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
             {users.map((user) => {
-              const busy =
-                busyUserId === user.id;
+              const busy = busyUserId === user.id;
 
               return (
-                <div
-                  key={user.id}
-                  className="p-5"
-                >
+                <div key={user.id} className="p-5">
                   <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
                     <div className="flex min-w-0 items-start gap-4">
                       <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-slate-100 text-sm font-bold text-slate-600">
-                        {initials(
-                          user.fullName,
-                        )}
+                        {initials(user.fullName)}
                       </div>
 
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="truncate font-semibold text-slate-900">
-                            {
-                              user.fullName
-                            }
+                            {user.fullName}
                           </p>
 
-                          <StatusBadge
-                            active={
-                              user.isActive
-                            }
-                          />
+                          <StatusBadge active={user.isActive} />
                         </div>
 
                         <p className="mt-1 truncate text-sm text-slate-500">
@@ -544,9 +409,7 @@ export default function AccessSetupPage() {
                         </p>
 
                         <p className="mt-2 text-xs font-semibold text-indigo-600">
-                          {roleLabel(
-                            user.role,
-                          )}
+                          {roleLabel(user.role)}
                         </p>
                       </div>
                     </div>
@@ -560,56 +423,36 @@ export default function AccessSetupPage() {
                         <select
                           disabled={busy}
                           value={user.role}
-                          onChange={(
-                            event,
-                          ) =>
+                          onChange={(event) =>
                             void handleRoleChange(
                               user,
-                              event.target
-                                .value as CompanyUserRole,
+                              event.target.value as CompanyUserRole,
                             )
                           }
                           className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-400 disabled:opacity-50"
                         >
-                          {roles.map(
-                            (
-                              option,
-                            ) => (
-                              <option
-                                key={
-                                  option.value
-                                }
-                                value={
-                                  option.value
-                                }
-                              >
-                                {
-                                  option.label
-                                }
-                              </option>
-                            ),
-                          )}
+                          {roles.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
                         </select>
                       </label>
 
                       <button
                         disabled={busy}
-                        onClick={() =>
-                          void handleStatusChange(
-                            user,
-                          )
-                        }
+                        onClick={() => void handleStatusChange(user)}
                         className={`rounded-lg border px-3 py-2 text-xs font-bold transition disabled:opacity-50 ${
                           user.isActive
-                            ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
-                            : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                            ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                            : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
                         }`}
                       >
                         {busy
-                          ? 'Updating…'
+                          ? "Updating…"
                           : user.isActive
-                            ? 'Deactivate'
-                            : 'Activate'}
+                            ? "Deactivate"
+                            : "Activate"}
                       </button>
                     </div>
                   </div>
@@ -621,15 +464,11 @@ export default function AccessSetupPage() {
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-        <h2 className="text-sm font-bold text-slate-900">
-          Access control
-        </h2>
+        <h2 className="text-sm font-bold text-slate-900">Access control</h2>
 
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-          Roles provide the standard DeluxHR
-          access preset. Granular permissions
-          and data scopes are managed
-          separately and remain protected by
+          Roles provide the standard DeluxHR access preset. Granular permissions
+          and data scopes are managed separately and remain protected by
           DeluxHR's access-control rules.
         </p>
       </section>
@@ -650,8 +489,8 @@ function SummaryCard({
     <div
       className={`rounded-2xl border p-5 shadow-sm ${
         highlight
-          ? 'border-emerald-200 bg-emerald-50/50'
-          : 'border-slate-200 bg-white'
+          ? "border-emerald-200 bg-emerald-50/50"
+          : "border-slate-200 bg-white"
       }`}
     >
       <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
@@ -665,41 +504,33 @@ function SummaryCard({
   );
 }
 
-function StatusBadge({
-  active,
-}: {
-  active: boolean;
-}) {
+function StatusBadge({ active }: { active: boolean }) {
   return (
     <span
       className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
         active
-          ? 'bg-emerald-50 text-emerald-700'
-          : 'bg-slate-100 text-slate-500'
+          ? "bg-emerald-50 text-emerald-700"
+          : "bg-slate-100 text-slate-500"
       }`}
     >
-      {active ? 'Active' : 'Inactive'}
+      {active ? "Active" : "Inactive"}
     </span>
   );
 }
 
 function initials(name: string) {
-  const parts = name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
+  const parts = name.trim().split(/\s+/).filter(Boolean);
 
   if (parts.length === 0) {
-    return 'U';
+    return "U";
   }
 
   if (parts.length === 1) {
-    return parts[0][0]
-      ?.toUpperCase() ?? 'U';
+    return parts[0][0]?.toUpperCase() ?? "U";
   }
 
-  return `${parts[0][0] ?? ''}${
-    parts[parts.length - 1][0] ?? ''
+  return `${parts[0][0] ?? ""}${
+    parts[parts.length - 1][0] ?? ""
   }`.toUpperCase();
 }
 
@@ -708,7 +539,7 @@ function Field({
   value,
   onChange,
   placeholder,
-  type = 'text',
+  type = "text",
   required = false,
   hint,
 }: {
@@ -725,29 +556,19 @@ function Field({
       <span className="mb-2 block text-sm font-semibold text-slate-700">
         {label}
 
-        {required && (
-          <span className="ml-1 text-rose-500">
-            *
-          </span>
-        )}
+        {required && <span className="ml-1 text-rose-500">*</span>}
       </span>
 
       <input
         type={type}
         required={required}
         value={value}
-        onChange={(event) =>
-          onChange(event.target.value)
-        }
+        onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
       />
 
-      {hint && (
-        <p className="mt-2 text-xs leading-5 text-slate-400">
-          {hint}
-        </p>
-      )}
+      {hint && <p className="mt-2 text-xs leading-5 text-slate-400">{hint}</p>}
     </label>
   );
 }
@@ -756,15 +577,15 @@ function Notice({
   kind,
   children,
 }: {
-  kind: 'error' | 'success';
+  kind: "error" | "success";
   children: React.ReactNode;
 }) {
   return (
     <div
       className={`rounded-xl border px-4 py-3 text-sm ${
-        kind === 'error'
-          ? 'border-red-200 bg-red-50 text-red-700'
-          : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+        kind === "error"
+          ? "border-red-200 bg-red-50 text-red-700"
+          : "border-emerald-200 bg-emerald-50 text-emerald-700"
       }`}
     >
       {children}

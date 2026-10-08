@@ -1,0 +1,11 @@
+ALTER TABLE "Employee" ALTER COLUMN "email" DROP NOT NULL;
+UPDATE "Employee" SET "email" = NULL WHERE btrim("email") = '';
+ALTER TABLE "Employee" ADD COLUMN "employeeCode" TEXT;
+CREATE UNIQUE INDEX "Employee_organizationId_employeeCode_key" ON "Employee"("organizationId", "employeeCode");
+ALTER TABLE "User" ADD COLUMN "tokenVersion" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "UserPermission" ADD COLUMN "denied" BOOLEAN NOT NULL DEFAULT false;
+CREATE TABLE "PasswordResetToken" ("id" TEXT PRIMARY KEY, "tokenHash" TEXT NOT NULL UNIQUE, "userId" TEXT NOT NULL REFERENCES "User"("id") ON DELETE CASCADE, "expiresAt" TIMESTAMP(3) NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX "PasswordResetToken_userId_idx" ON "PasswordResetToken"("userId");
+CREATE INDEX "PasswordResetToken_expiresAt_idx" ON "PasswordResetToken"("expiresAt");
+CREATE TABLE "AuthThrottle" ("key" TEXT PRIMARY KEY, "count" INTEGER NOT NULL DEFAULT 0, "resetAt" TIMESTAMP(3) NOT NULL);
+CREATE INDEX "AuthThrottle_resetAt_idx" ON "AuthThrottle"("resetAt");

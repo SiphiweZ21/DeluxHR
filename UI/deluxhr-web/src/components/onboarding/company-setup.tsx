@@ -228,10 +228,19 @@ export function StructureSetup() {
   };
   return (
     <>
+      <Card title="Suggested Executive Leadership structure">
+        <p className="text-sm">
+          Use Executive Leadership for senior leadership, separate from
+          Administration &amp; Management. Suggested roles: Director (DIRECTOR),
+          Chief Executive Officer (CEO), Managing Director (MD). Job roles do
+          not automatically grant access; configure permissions in Company
+          Access.
+        </p>
+      </Card>
       <SetupForm
         title="1. Create a department"
         submitLabel="Create department"
-        description="Start with a department, such as Operations, Administration or Sales. Fields marked * are required."
+        description="Start with a department, such as Executive Leadership, Human Resources & Training, Operations or Administration. Fields marked * are required."
         fields={[
           {
             name: "name",

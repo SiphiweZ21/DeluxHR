@@ -140,7 +140,7 @@ describe('Positions and saved onboarding lookups', () => {
       d = {
         firstName: 'Test',
         lastName: 'Person',
-        phoneNumber: '123',
+        phoneNumber: '+27844718499',
         departmentId: 'dept',
         positionId: 'pos',
         employmentType: 'PERMANENT',
@@ -176,7 +176,7 @@ describe('Positions and saved onboarding lookups', () => {
       d = {
         firstName: 'Test',
         lastName: 'Person',
-        phoneNumber: '123',
+        phoneNumber: '+27844718499',
         jobTitle: ' Legacy title ',
       };
     expect(await s.positionFields({}, 'org', 'dept', d)).toMatchObject({
@@ -365,7 +365,7 @@ describe('Enriched employee import', () => {
     firstName: 'Test',
     lastName: 'Person',
     email: 'test@example.test',
-    phoneNumber: '123',
+    phoneNumber: '+27844718499',
     departmentId: 'dept',
     positionId: 'pos',
     employmentType: 'PERMANENT',
@@ -429,7 +429,7 @@ describe('Duplicate identity protection during rich creation', () => {
       s.positionFields(tx, 'org', 'dept', {
         firstName: 'Test',
         lastName: 'Person',
-        phoneNumber: '123',
+        phoneNumber: '+27844718499',
         identityType: 'OTHER',
         identityNumber: 'PILOT-01',
       }),
@@ -498,5 +498,87 @@ describe('Configured storage root after environment initialization', () => {
       else process.env.DELUXHR_STORAGE_ROOT = before;
       await rm(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe('Optional employee email and company codes in bulk onboarding', () => {
+  function fixture() {
+    const tx: any = {
+      position: { findFirst: async () => ({ name: 'Security Officer' }) },
+      employee: {
+        findFirst: async () => null,
+        create: jest.fn(async ({ data }: any) => ({
+          ...data,
+          id: Math.random().toString(),
+          department: { id: 'dept' },
+        })),
+      },
+    };
+    const db: any = {
+      department: { findMany: async () => [{ id: 'dept' }] },
+      employee: { findMany: async () => [], findFirst: async () => null },
+      $transaction: async (fn: any) => fn(tx),
+    };
+    const service: any = new EmployeesService(db, {
+      log: async () => {},
+    } as any);
+    service.assertEmployeeLimit = async () => {};
+    service.getNextEmployeeSequence = async () => 1;
+    return { service, tx, db };
+  }
+  const row: any = {
+    firstName: 'Test',
+    lastName: 'Employee',
+    phoneNumber: '0844718499',
+    departmentId: 'dept',
+  };
+  it('imports multiple employees without email and preserves code leading zeros', async () => {
+    const f = fixture();
+    const result = await f.service.bulkCreate(
+      'org',
+      [
+        { ...row, employeeCode: '000123' },
+        { ...row, lastName: 'Second', email: '' },
+      ],
+      actor,
+    );
+    expect(result.imported).toBe(2);
+    const calls = f.tx.employee.create.mock.calls;
+    expect(calls[0][0].data).toMatchObject({
+      email: null,
+      employeeCode: '000123',
+      phoneNumber: '+27844718499',
+      status: 'PENDING_VERIFICATION',
+    });
+    expect(calls[1][0].data.email).toBeNull();
+  });
+  it('reports duplicate codes with row numbers before writing', async () => {
+    const f = fixture();
+    const result = await f.service.bulkCreate(
+      'org',
+      [
+        { ...row, employeeCode: 'SEC-001' },
+        { ...row, employeeCode: ' SEC-001 ' },
+      ],
+      actor,
+    );
+    expect(result.imported).toBe(0);
+    expect(result.errors).toEqual([
+      expect.objectContaining({
+        row: 3,
+        message: expect.stringContaining('Duplicate EmployeeCode'),
+      }),
+    ]);
+    expect(f.tx.employee.create).not.toHaveBeenCalled();
+  });
+  it('reports invalid phone per row', async () => {
+    const f = fixture();
+    const result = await f.service.bulkCreate(
+      'org',
+      [{ ...row, phoneNumber: '' }],
+      actor,
+    );
+    expect(result.errors[0].row).toBe(2);
+    expect(result.imported).toBe(0);
   });
 });

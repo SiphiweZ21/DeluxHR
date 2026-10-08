@@ -1,7 +1,12 @@
 import {
+  normalizePhone,
+  normalizeEmployeeCode,
+} from '../../common/employee-contact';
+import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  HttpException,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -84,6 +89,16 @@ export class EmployeesService {
       throw new BadRequestException(
         'Identity already belongs to an employee in this company.',
       );
+    const employeeCode = normalizeEmployeeCode(d.employeeCode);
+    if (
+      employeeCode &&
+      (await tx.employee.findFirst({
+        where: { organizationId: org, employeeCode },
+      }))
+    )
+      throw new BadRequestException(
+        'EmployeeCode already exists in this company.',
+      );
     let title = d.jobTitle?.trim();
     if (d.positionId) {
       const p = await tx.position.findFirst({
@@ -105,6 +120,7 @@ export class EmployeesService {
       title = p.name;
     }
     return {
+      employeeCode: normalizeEmployeeCode(d.employeeCode),
       positionId: d.positionId,
       jobTitle: title,
       employmentType: d.employmentType,
@@ -134,17 +150,19 @@ export class EmployeesService {
       throw new NotFoundException('Department not found');
     }
 
-    const email = dto.email.trim().toLowerCase();
+    const email = dto.email?.trim().toLowerCase() || null;
     const firstName = dto.firstName.trim();
     const lastName = dto.lastName.trim();
-    const phoneNumber = dto.phoneNumber.trim();
+    const phoneNumber = normalizePhone(dto.phoneNumber);
 
-    const existingEmployee = await this.prisma.employee.findFirst({
-      where: {
-        email,
-        organizationId,
-      },
-    });
+    const existingEmployee = email
+      ? await this.prisma.employee.findFirst({
+          where: {
+            email,
+            organizationId,
+          },
+        })
+      : null;
 
     if (existingEmployee) {
       throw new BadRequestException('Employee with this email already exists');
@@ -179,7 +197,9 @@ export class EmployeesService {
           lastName,
           email,
           phoneNumber,
-          whatsappNumber: dto.whatsappNumber?.trim() || phoneNumber,
+          whatsappNumber: dto.whatsappNumber?.trim()
+            ? normalizePhone(dto.whatsappNumber)
+            : phoneNumber,
           whatsappOptInAt: null,
           departmentId: dto.departmentId,
           organizationId,
@@ -263,10 +283,15 @@ export class EmployeesService {
       },
       select: {
         email: true,
+        employeeCode: true,
       },
     });
+    const existingCodes = new Set(
+      existing.map((e) => e.employeeCode).filter(Boolean),
+    );
+    const seenCodes = new Set<string>();
     const existingEmails = new Set(
-      existing.map((employee) => employee.email.toLowerCase()),
+      existing.map((employee) => employee.email?.toLowerCase()),
     );
     const seen = new Set<string>();
     const errors: Array<{
@@ -276,7 +301,7 @@ export class EmployeesService {
     }> = [];
     const valid: CreateEmployeeDto[] = [];
     employees.forEach((employee, index) => {
-      const email = employee.email.trim().toLowerCase();
+      const email = employee.email?.trim().toLowerCase() || '';
       if (!departmentIds.has(employee.departmentId)) {
         errors.push({
           row: index + 2,
@@ -285,7 +310,7 @@ export class EmployeesService {
         });
         return;
       }
-      if (existingEmails.has(email) || seen.has(email)) {
+      if (email && (existingEmails.has(email) || seen.has(email))) {
         errors.push({
           row: index + 2,
           email,
@@ -293,15 +318,35 @@ export class EmployeesService {
         });
         return;
       }
-      seen.add(email);
-      valid.push({
-        ...employee,
-        firstName: employee.firstName.trim(),
-        lastName: employee.lastName.trim(),
-        email,
-        phoneNumber: employee.phoneNumber.trim(),
-        whatsappNumber: employee.whatsappNumber?.trim(),
-      });
+      try {
+        const code = normalizeEmployeeCode(employee.employeeCode);
+        if (code && (existingCodes.has(code) || seenCodes.has(code)))
+          throw new BadRequestException(
+            'Duplicate EmployeeCode in this company or import.',
+          );
+        const phoneNumber = normalizePhone(employee.phoneNumber);
+        const whatsappNumber = employee.whatsappNumber?.trim()
+          ? normalizePhone(employee.whatsappNumber)
+          : undefined;
+        seen.add(email);
+        if (code) seenCodes.add(code);
+        valid.push({
+          ...employee,
+          firstName: employee.firstName.trim(),
+          lastName: employee.lastName.trim(),
+          email,
+          employeeCode: code,
+          phoneNumber,
+          whatsappNumber,
+        });
+      } catch (error) {
+        errors.push({
+          row: index + 2,
+          email,
+          message:
+            error instanceof Error ? error.message : 'Invalid employee details',
+        });
+      }
     });
     if (errors.length) {
       return {
@@ -354,7 +399,7 @@ export class EmployeesService {
             employeeNumber,
             firstName: employee.firstName,
             lastName: employee.lastName,
-            email: employee.email,
+            email: employee.email || null,
             phoneNumber: employee.phoneNumber,
             whatsappNumber: employee.whatsappNumber ?? employee.phoneNumber,
             whatsappOptInAt: null,
@@ -393,6 +438,32 @@ export class EmployeesService {
       errors: [],
       employees: created.map((employee) => this.sanitizeEmployee(employee)),
     };
+  }
+  async approveBatch(
+    organizationId: string,
+    ids: string[],
+    actor: TenantJwtUser,
+    onboarding = false,
+  ) {
+    const results: Array<{ id: string; approved: boolean; message?: string }> =
+      [];
+    for (const id of ids) {
+      try {
+        await this.activate(organizationId, id, actor, onboarding);
+        results.push({ id, approved: true });
+      } catch (error) {
+        let message =
+          'Approval could not be completed. Try again or contact support.';
+        if (error instanceof HttpException) {
+          const response = error.getResponse();
+          message = typeof response === 'string' ? response : error.message;
+          if (typeof response === 'object' && 'missingFields' in response)
+            message += ': ' + (response.missingFields as string[]).join(', ');
+        }
+        results.push({ id, approved: false, message });
+      }
+    }
+    return { results };
   }
   async list(organizationId: string) {
     const employees = await this.prisma.employee.findMany({
@@ -490,10 +561,12 @@ export class EmployeesService {
         );
     }
     const normalizedEmail =
-      dto.email !== undefined ? dto.email.trim().toLowerCase() : undefined;
+      dto.email !== undefined
+        ? dto.email?.trim().toLowerCase() || null
+        : undefined;
     if (
-      normalizedEmail !== undefined &&
-      normalizedEmail !== existingEmployee.email.toLowerCase()
+      normalizedEmail != null &&
+      normalizedEmail !== existingEmployee.email?.toLowerCase()
     ) {
       const duplicate = await this.prisma.employee.findFirst({
         where: {
@@ -561,6 +634,24 @@ export class EmployeesService {
     this.validateEmploymentDates(employmentStartDate, employmentEndDate);
     const data: Prisma.EmployeeUpdateInput = {};
     const changedFields: string[] = [];
+    if (dto.employeeCode !== undefined) {
+      const code = normalizeEmployeeCode(dto.employeeCode);
+      if (
+        code &&
+        (await this.prisma.employee.findFirst({
+          where: {
+            organizationId,
+            employeeCode: code,
+            NOT: { id: employeeId },
+          },
+        }))
+      )
+        throw new BadRequestException(
+          'EmployeeCode already exists in this company.',
+        );
+      data.employeeCode = code;
+      changedFields.push('employeeCode');
+    }
     if (dto.firstName !== undefined) {
       const value = dto.firstName.trim();
       if (!value) {
@@ -589,7 +680,7 @@ export class EmployeesService {
       changedFields.push('email');
     }
     if (dto.phoneNumber !== undefined) {
-      const value = dto.phoneNumber.trim();
+      const value = normalizePhone(dto.phoneNumber);
       if (!value) {
         throw new BadRequestException('Phone number cannot be empty');
       }
@@ -599,7 +690,9 @@ export class EmployeesService {
       }
     }
     if (dto.whatsappNumber !== undefined) {
-      const value = dto.whatsappNumber.trim();
+      const value = dto.whatsappNumber.trim()
+        ? normalizePhone(dto.whatsappNumber)
+        : '';
       if (value !== (existingEmployee.whatsappNumber ?? '')) {
         data.whatsappNumber = value || null;
         data.whatsappOptInAt = null;
@@ -1067,6 +1160,8 @@ export class EmployeesService {
       );
     }
     const allowedCheckerRoles = this.getAllowedCheckerRoles(maker.role);
+    if (!allowedCheckerRoles.includes(UserRole.EXECUTIVE))
+      allowedCheckerRoles.push(UserRole.EXECUTIVE);
     if (!allowedCheckerRoles.includes(actor.role)) {
       if (
         onboarding &&
@@ -1223,9 +1318,6 @@ export class EmployeesService {
     }
     if (!employee.lastName.trim()) {
       missingFields.push('lastName');
-    }
-    if (!employee.email.trim()) {
-      missingFields.push('email');
     }
     if (!employee.phoneNumber?.trim()) {
       missingFields.push('phoneNumber');
