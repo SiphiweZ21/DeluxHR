@@ -1,0 +1,6 @@
+"use client";
+import Link from 'next/link';
+import {useEffect,useState} from 'react';
+import { workforceRequest } from '../lib/api';
+type Item={label:string;href:string;count:number;canApprove:boolean};
+export function ApprovalSummary(){const [items,setItems]=useState<Item[]>([]),[error,setError]=useState('');async function load(){try{setItems(await workforceRequest<Item[]>('workspace-access/approvals'));setError('');}catch(e){setError(e instanceof Error?e.message:'Unable to load approvals');}}useEffect(()=>{void load();},[]);return <section className="rounded-xl border bg-white p-5 space-y-3"><div className="flex justify-between"><h2 className="font-semibold">Awaiting approval ({items.reduce((n,i)=>n+i.count,0)})</h2><button className="text-indigo-700 underline" onClick={()=>void load()}>Refresh</button></div><p className="text-sm text-slate-500">Company totals for areas you can view. Your permissions, self-approval rules and any configured approval chain determine which records you can review.</p>{error&&<p role="alert">{error}</p>}<div className="flex flex-wrap gap-3">{items.map(i=><Link key={i.href} href={i.href} className="rounded-lg border p-3 text-sm"><b>{i.count}</b> {i.label}<span className="block text-xs text-slate-500">{i.canApprove?'Open for review':'View submissions'}</span></Link>)}</div></section>;}

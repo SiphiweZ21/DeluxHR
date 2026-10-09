@@ -58,13 +58,14 @@ describe('Early Pay scoped requests and administration guards', () => {
     expect(service.quote).toHaveBeenCalledWith('org', 'other');
   });
   it('guards policy, queue, review and simulated processing permissions', () => {
-    for (const method of ['requests', 'review', 'process'])
+    for (const method of ['review', 'process'])
       expect(
         Reflect.getMetadata(
           REQUIRED_PERMISSIONS_KEY,
           EarlyPayController.prototype[method],
         ),
       ).toEqual([Permission.APPROVE_EARLY_PAY]);
+    expect(Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, EarlyPayController.prototype.requests)).toEqual([Permission.VIEW_EARLY_PAY]);
     expect(
       Reflect.getMetadata(
         REQUIRED_PERMISSIONS_KEY,

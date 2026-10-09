@@ -1,4 +1,5 @@
 "use client";
+import { EmployeeChangeQueue } from '../../components/employee-change-queue';
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   getDepartments,
@@ -39,6 +40,7 @@ export default function EmployeesPage() {
     [positions, setPositions] = useState<SetupPosition[]>([]),
     [access, setAccess] = useState<WorkspaceAccess | null>(null);
   const [form, setForm] = useState(blank),
+    [formOpen, setFormOpen] = useState(false),
     [editing, setEditing] = useState<string | null>(null),
     [query, setQuery] = useState(""),
     [status, setStatus] = useState("ALL"),
@@ -115,7 +117,7 @@ export default function EmployeesPage() {
       await load();
       setMessage(
         editing
-          ? "Employee profile updated."
+          ? "Employee changes submitted for approval where required. Review the pending changes queue."
           : "Employee saved as pending. Add another employee or view pending approvals.",
       );
     } catch (e) {
@@ -125,6 +127,7 @@ export default function EmployeesPage() {
     }
   }
   function edit(e: Employee) {
+    setFormOpen(true);
     setEditing(e.id);
     setForm({
       firstName: e.firstName,
@@ -139,7 +142,7 @@ export default function EmployeesPage() {
       identityType: e.identityType || "SOUTH_AFRICAN_ID",
       identityNumber: "",
     });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    requestAnimationFrame(() => document.getElementById("employee-form")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
   async function approve(ids: string[]) {
     if (
@@ -246,10 +249,10 @@ export default function EmployeesPage() {
   }
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-semibold">Employees</h1>
+      <h1 className="text-3xl font-semibold">HR &amp; Employee Details</h1>
+
       <p>
-        Create your employee list now and approve it later. Email and
-        EmployeeCode are optional; phone is required.
+        View employee details and review pending approvals. Add employees when needed.
       </p>
       {error && (
         <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-700">
@@ -267,11 +270,151 @@ export default function EmployeesPage() {
           </button>
         </p>
       )}
-      {(editing ? allowed("MANAGE_EMPLOYEES") : allowed("ADD_EMPLOYEES")) && (
-        <section className="rounded-xl border bg-white p-6">
+      <section className="rounded-xl border bg-white p-6">
+        <h2 className="text-xl font-semibold">
+          Employee directory & approvals
+        </h2>
+        {allowed("ADD_EMPLOYEES") && <button className="mt-3 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white" onClick={() => { setEditing(null); setForm(blank); setFormOpen(true); requestAnimationFrame(() => document.getElementById("employee-form")?.scrollIntoView({behavior: "smooth", block: "start"})); }}>Add employee</button>}
+        <button className="underline mt-2" onClick={exportEmployees}>
+          Export current employee list
+        </button>
+        <div className="flex flex-wrap gap-3 my-4">
+          <input
+            aria-label="Search employees"
+            className="rounded-lg border p-2"
+            placeholder="Search name, code or email"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <select
+            aria-label="Approval status"
+            className="rounded-lg border p-2"
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+          >
+            {[
+              "ALL",
+              "PENDING_VERIFICATION",
+              "ACTIVE",
+              "SUSPENDED",
+              "TERMINATED",
+            ].map((x) => (
+              <option key={x}>{x}</option>
+            ))}
+          </select>
+          {allowed("APPROVE_EMPLOYEES") && (
+            <button
+              disabled={busy || !selected.length}
+              className="rounded-lg bg-indigo-600 p-2 text-white disabled:opacity-50"
+              onClick={() => void approve(selected)}
+            >
+              Approve selected ({selected.length})
+            </button>
+          )}
+        </div>
+        <p className="text-sm mb-3">
+          Select pending employees for approval. Active employees do not need approval. Review profiles and documents first. Creators cannot approve
+          their own employees.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr>
+                {[
+                  ...(allowed("APPROVE_EMPLOYEES") ? ["Approval selection"] : []),
+                  "Employee",
+                  "Employee code",
+                  "Department / position",
+                  "Contact",
+                  "Status",
+                  "Actions",
+                ].map((h) => (
+                  <th key={h} className="p-3">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((e) => (
+                <tr key={e.id} className="border-t">
+                  {allowed("APPROVE_EMPLOYEES") && <td className="p-3">
+                    {e.status === "PENDING_VERIFICATION" &&
+                      allowed("APPROVE_EMPLOYEES") && (
+                        <input
+                          aria-label={`Select ${e.firstName} ${e.lastName}`}
+                          type="checkbox"
+                          disabled={
+                            busy ||
+                            (!selected.includes(e.id) && selected.length >= 100)
+                          }
+                          checked={selected.includes(e.id)}
+                          onChange={(event) =>
+                            setSelected((ids) =>
+                              event.target.checked
+                                ? [...ids, e.id]
+                                : ids.filter((id) => id !== e.id),
+                            )
+                          }
+                        />
+                      )}
+                    {e.status !== "PENDING_VERIFICATION" && <span className="text-xs text-slate-500">Not pending</span>}
+                  </td>}
+                  <td className="p-3">
+                    {e.firstName} {e.lastName}
+                    <p className="text-xs text-slate-500">{e.employeeNumber}</p>
+                  </td>
+                  <td className="p-3">{e.employeeCode || "—"}</td>
+                  <td className="p-3">
+                    {e.department?.name}
+                    <p>{e.jobTitle}</p>
+                  </td>
+                  <td className="p-3">
+                    {e.email || "No email"}
+                    <p>{e.phoneNumber}</p>
+                  </td>
+                  <td className="p-3">{e.status}</td>
+                  <td className="p-3 space-x-3">
+                    {allowed("MANAGE_EMPLOYEES") &&
+                      e.status !== "TERMINATED" && (
+                        <button onClick={() => edit(e)} className="underline">
+                          Edit
+                        </button>
+                      )}
+                    {e.status === "PENDING_VERIFICATION" &&
+                      allowed("APPROVE_EMPLOYEES") && (
+                        <button
+                          disabled={busy}
+                          onClick={() => void approve([e.id])}
+                          className="underline"
+                        >
+                          Approve
+                        </button>
+                      )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-3 text-sm">{visible.length} employees shown</p>
+        {approvalResults.map((result) => (
+          <p
+            key={result.id}
+            className={result.approved ? "text-green-700" : "text-red-700"}
+          >
+            {employees.find((e) => e.id === result.id)?.firstName || result.id}:{" "}
+            {result.approved ? "Approved" : result.message}
+          </p>
+        ))}
+      </section>
+      <EmployeeChangeQueue/>
+      {formOpen && (editing ? allowed("MANAGE_EMPLOYEES") : allowed("ADD_EMPLOYEES")) && (
+      <section id="employee-form" className="scroll-mt-28 rounded-xl border bg-white p-6">
           <h2 className="text-xl font-semibold">
             {editing ? "Edit employee profile" : "Add employee"}
           </h2>
+          <button type="button" className="mt-2 text-sm text-slate-600 underline" onClick={() => {setFormOpen(false); setEditing(null); setForm(blank);}}>Close form</button>
           <form onSubmit={save} className="grid gap-4 mt-4 md:grid-cols-3">
             {(
               [
@@ -387,6 +530,7 @@ export default function EmployeesPage() {
                   onClick={() => {
                     setEditing(null);
                     setForm(blank);
+                    setFormOpen(false);
                   }}
                 >
                   Cancel edit
@@ -416,142 +560,7 @@ export default function EmployeesPage() {
           )}
         </section>
       )}
-      <section className="rounded-xl border bg-white p-6">
-        <h2 className="text-xl font-semibold">
-          Employee directory & approvals
-        </h2>
-        <button className="underline mt-2" onClick={exportEmployees}>
-          Export current employee list
-        </button>
-        <div className="flex flex-wrap gap-3 my-4">
-          <input
-            aria-label="Search employees"
-            className="rounded-lg border p-2"
-            placeholder="Search name, code or email"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <select
-            aria-label="Approval status"
-            className="rounded-lg border p-2"
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-          >
-            {[
-              "ALL",
-              "PENDING_VERIFICATION",
-              "ACTIVE",
-              "SUSPENDED",
-              "TERMINATED",
-            ].map((x) => (
-              <option key={x}>{x}</option>
-            ))}
-          </select>
-          {allowed("APPROVE_EMPLOYEES") && (
-            <button
-              disabled={busy || !selected.length}
-              className="rounded-lg bg-indigo-600 p-2 text-white disabled:opacity-50"
-              onClick={() => void approve(selected)}
-            >
-              Approve selected ({selected.length})
-            </button>
-          )}
-        </div>
-        <p className="text-sm mb-3">
-          Review profiles and documents before approval. Creators cannot approve
-          their own employees.
-        </p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr>
-                {[
-                  "Select",
-                  "Employee",
-                  "EmployeeCode",
-                  "Department / position",
-                  "Contact",
-                  "Status",
-                  "Actions",
-                ].map((h) => (
-                  <th key={h} className="p-3">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((e) => (
-                <tr key={e.id} className="border-t">
-                  <td className="p-3">
-                    {e.status === "PENDING_VERIFICATION" &&
-                      allowed("APPROVE_EMPLOYEES") && (
-                        <input
-                          aria-label={`Select ${e.firstName} ${e.lastName}`}
-                          type="checkbox"
-                          disabled={
-                            busy ||
-                            (!selected.includes(e.id) && selected.length >= 100)
-                          }
-                          checked={selected.includes(e.id)}
-                          onChange={(event) =>
-                            setSelected((ids) =>
-                              event.target.checked
-                                ? [...ids, e.id]
-                                : ids.filter((id) => id !== e.id),
-                            )
-                          }
-                        />
-                      )}
-                  </td>
-                  <td className="p-3">
-                    {e.firstName} {e.lastName}
-                    <p className="text-xs text-slate-500">{e.employeeNumber}</p>
-                  </td>
-                  <td className="p-3">{e.employeeCode || "—"}</td>
-                  <td className="p-3">
-                    {e.department?.name}
-                    <p>{e.jobTitle}</p>
-                  </td>
-                  <td className="p-3">
-                    {e.email || "No email"}
-                    <p>{e.phoneNumber}</p>
-                  </td>
-                  <td className="p-3">{e.status}</td>
-                  <td className="p-3 space-x-3">
-                    {allowed("MANAGE_EMPLOYEES") &&
-                      e.status !== "TERMINATED" && (
-                        <button onClick={() => edit(e)} className="underline">
-                          Edit
-                        </button>
-                      )}
-                    {e.status === "PENDING_VERIFICATION" &&
-                      allowed("APPROVE_EMPLOYEES") && (
-                        <button
-                          disabled={busy}
-                          onClick={() => void approve([e.id])}
-                          className="underline"
-                        >
-                          Approve
-                        </button>
-                      )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p className="mt-3 text-sm">{visible.length} employees shown</p>
-        {approvalResults.map((result) => (
-          <p
-            key={result.id}
-            className={result.approved ? "text-green-700" : "text-red-700"}
-          >
-            {employees.find((e) => e.id === result.id)?.firstName || result.id}:{" "}
-            {result.approved ? "Approved" : result.message}
-          </p>
-        ))}
-      </section>
+  
     </div>
   );
 }

@@ -11,6 +11,10 @@ export type EffectivePermission = {
 };
 
 const ORGANIZATION_ONLY_PERMISSIONS = new Set<Permission>([
+  Permission.VIEW_PAYROLL, Permission.MANAGE_PAYROLL, Permission.GENERATE_PAYROLL, Permission.REVIEW_PAYROLL,
+  Permission.VIEW_ALL_PAYSLIPS, Permission.VIEW_COMMUNICATIONS, Permission.MANAGE_COMMUNICATIONS,
+  Permission.APPROVE_PAYROLL, Permission.APPROVE_EARLY_PAY, Permission.APPROVE_TIMESHEETS,
+  Permission.VIEW_LEAVE, Permission.APPROVE_LEAVE, Permission.VIEW_EARLY_PAY, Permission.PREPARE_EARLY_PAY, Permission.APPROVE_COMMUNICATIONS,
   Permission.ADD_EMPLOYEES,
   Permission.MANAGE_EMPLOYEES,
   Permission.APPROVE_EMPLOYEES,

@@ -9,7 +9,7 @@ import { DataScope, Permission, UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { hashPassword } from '../../common/auth/password';
-import { ROLE_PERMISSION_PRESETS } from '../../common/access/permission-presets';
+import { ROLE_PERMISSION_PRESETS, DEPARTMENT_PERMISSION_PRESETS } from '../../common/access/permission-presets';
 import type { TenantJwtUser } from '../../common/auth/jwt-user.type';
 import { CreateCompanyUserDto } from './dto/create-company-user.dto';
 import { UpdateCompanyUserRoleDto } from './dto/update-company-user-role.dto';
@@ -32,10 +32,13 @@ export class CompanyUsersService {
   ) {}
   async accessPresets() {
     return {
-      roles: ROLE_PERMISSION_PRESETS,
+      roles: { ...ROLE_PERMISSION_PRESETS, ...DEPARTMENT_PERMISSION_PRESETS },
       departments: [
-        { name: 'Executive Leadership', role: 'EXECUTIVE' },
-        { name: 'Human Resources & Training', role: 'HR_ADMIN' },
+        { name: 'Executive Leadership', role: 'EXECUTIVE_LEADERSHIP' },
+        { name: 'Human Resources & Training', role: 'HR_TRAINING' },
+        { name: 'Finance & Payroll', role: 'FINANCE_PAYROLL' },
+        { name: 'Administration & Management', role: 'WORKFORCE_ADMINISTRATION' },
+        { name: 'Operations Manager', role: 'OPERATIONS_MANAGER' },
       ],
     };
   }

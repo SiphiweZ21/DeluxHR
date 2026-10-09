@@ -225,7 +225,7 @@ export class EarlyPayService {
     };
   }
 
-  async createRequest(organizationId: string, dto: CreateEarlyPayRequestDto) {
+  async createRequest(organizationId: string, dto: CreateEarlyPayRequestDto, submittedByUserId?: string) {
     const quote = await this.quote(organizationId, dto.employeeId);
 
     if (!quote.eligible) {
@@ -266,6 +266,7 @@ export class EarlyPayService {
       data: {
         organizationId,
         employeeId: dto.employeeId,
+        submittedByUserId,
         payPeriodStart: quote.payPeriodStart,
         payPeriodEnd: quote.payPeriodEnd,
         qualifyingDays: quote.qualifyingDays,
@@ -341,6 +342,8 @@ export class EarlyPayService {
   ) {
     const existing = await this.findRequest(organizationId, id);
 
+    const employee = await this.prisma.employee.findFirst({ where: { id: existing.employeeId, organizationId }, select: { userId: true } });
+    if (existing.submittedByUserId === reviewerId || employee?.userId === reviewerId) throw new BadRequestException('You cannot review your own Early Pay submission. Another authorised finance or executive user must review it.');
     if (existing.status !== 'PENDING') {
       throw new BadRequestException('Only pending requests can be reviewed');
     }

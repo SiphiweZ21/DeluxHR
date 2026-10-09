@@ -53,6 +53,6 @@ export class LeaveWorkflowsController {
  history(@Param('requestId') id: string,@CurrentTenantUser() user: TenantJwtUser) { return this.service.history(user,id); }
  @Post('requests/:requestId/changes')
  requestChange(@Param('requestId') id: string,@Body() dto: ChangeDto,@CurrentTenantUser() user: TenantJwtUser) { return this.service.requestChange(user,id,dto); }
- @Post('changes/:id/review') @RequirePermissions(Permission.MANAGE_LEAVE)
+ @Post('changes/:id/review') @RequirePermissions(Permission.APPROVE_LEAVE)
  reviewChange(@Param('id') id: string,@Body() dto: ReviewChangeDto,@CurrentTenantUser() user: TenantJwtUser) { return this.service.reviewChange(user,id,dto); }
 }

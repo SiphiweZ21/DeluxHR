@@ -46,7 +46,7 @@ export class LeaveWorkflowsService {
    for (const step of dto.steps) {
      const approver = await this.prisma.user.findFirst({ where: { id: step.approverUserId, organizationId: user.organizationId, isActive: true } });
      if (!approver) throw new NotFoundException('Approver not found');
-     if (step.kind === LeaveApproverKind.MANAGER && approver.role !== UserRole.MANAGER || step.kind === LeaveApproverKind.HR && approver.role !== UserRole.HR_ADMIN && approver.role !== UserRole.COMPANY_ADMIN) throw new BadRequestException('Approver role does not match step kind');
+     if (step.kind === LeaveApproverKind.MANAGER && approver.role !== UserRole.MANAGER || step.kind === LeaveApproverKind.HR && approver.role !== UserRole.HR_ADMIN && approver.role !== UserRole.COMPANY_ADMIN && approver.role !== UserRole.EXECUTIVE) throw new BadRequestException('Approver role does not match step kind');
    }
    const workflow = await this.prisma.$transaction(async tx => {
      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${user.organizationId}), hashtext(${dto.leaveTypeId}))`;
@@ -87,12 +87,13 @@ export class LeaveWorkflowsService {
    if (dto.status === LeaveDecisionStatus.PENDING || !dto.comment?.trim() && dto.status === LeaveDecisionStatus.REJECTED) throw new BadRequestException('Approve or reject; rejection needs a reason');
    const decision = await this.prisma.leaveApprovalDecision.findFirst({ where: { id, request: { organizationId: user.organizationId } }, include: { step: true, request: { include: { employee: true, decisions: { include: { step: true } } } } } });
    if (!decision) throw new NotFoundException('Approval step not found');
+   await this.access.requirePermission(user, Permission.APPROVE_LEAVE);
    const expected = decision.step.approverUserId;
    const today = calendarDate(new Date().toISOString().slice(0,10));
    const delegate = expected !== user.sub && await this.prisma.leaveApprovalDelegation.findFirst({ where: { organizationId: user.organizationId, fromUserId: expected, toUserId: user.sub, effectiveFrom: { lte: today }, effectiveTo: { gte: today } } });
    if (expected !== user.sub && !delegate) throw new ForbiddenException('Approval step is not assigned to you');
-   if (decision.request.employee.userId === user.sub) throw new ForbiddenException('You cannot approve your own leave');
-   const required = decision.step.kind === LeaveApproverKind.MANAGER ? Permission.APPROVE_TEAM_LEAVE : Permission.MANAGE_LEAVE;
+   if (decision.request.employee.userId === user.sub || decision.request.submittedByUserId === user.sub) throw new ForbiddenException('You cannot approve your own leave');
+   const required = decision.step.kind === LeaveApproverKind.MANAGER ? Permission.APPROVE_TEAM_LEAVE : Permission.APPROVE_LEAVE;
    if (!(await this.access.hasPermission(user,required))) throw new ForbiddenException('Approver permission required');
    if (decision.status !== LeaveDecisionStatus.PENDING || decision.request.status !== 'PENDING') throw new ConflictException('Approval step is closed');
    if (!priorStepsApproved(decision.request.decisions.map(d => ({ order: d.step.order, status: d.status })),decision.step.order)) throw new ConflictException('Earlier approval steps must finish first');
@@ -162,10 +163,12 @@ export class LeaveWorkflowsService {
    await this.log(user,'LeaveChangeRequest',change.id,'LEAVE_CHANGE_REQUESTED',reason); return change;
  }
  async reviewChange(user: TenantJwtUser, id: string, dto: ReviewChangeDto) {
-   await this.manage(user);
+   await this.access.requirePermission(user, Permission.APPROVE_LEAVE);
    if (dto.status === LeaveChangeStatus.PENDING || !dto.note?.trim()) throw new BadRequestException('Review decision and note required');
    const change = await this.prisma.leaveChangeRequest.findFirst({ where: { id, request: { organizationId: user.organizationId } }, include: { request: true } });
    if (!change) throw new NotFoundException('Leave change not found');
+   const employee = await this.prisma.employee.findFirst({ where: { id: change.request.employeeId, organizationId: user.organizationId }, select: { userId: true } });
+   if (change.requestedByUserId === user.sub || employee?.userId === user.sub) throw new ForbiddenException('You cannot review your own leave change.');
    if (change.status !== LeaveChangeStatus.PENDING) throw new ConflictException('Change already reviewed');
    const request = change.request;
    const oldBreakdown = (request.chargeBreakdown ?? {}) as Record<string,number>;

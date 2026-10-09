@@ -26,7 +26,7 @@ export class LeaveRequestsService {
    const request = await this.prisma.$transaction(async tx => {
      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${user.organizationId}), hashtext(${dto.employeeId}))`;
      if (await tx.leaveRequest.findFirst({ where: { organizationId: user.organizationId, employeeId: dto.employeeId, status: { in: ['PENDING','APPROVED'] }, startDate: { lte: endDate }, endDate: { gte: startDate } } })) throw new ConflictException('Employee has overlapping pending or approved leave');
-     const created = await tx.leaveRequest.create({ data: { organizationId: user.organizationId, employeeId: dto.employeeId, leaveTypeId: dto.leaveTypeId, startDate, endDate, status: 'PENDING', policyId: policy.id, approvalWorkflowId: workflow?.id } });
+     const created = await tx.leaveRequest.create({ data: { organizationId: user.organizationId, employeeId: dto.employeeId, leaveTypeId: dto.leaveTypeId, startDate, endDate, status: 'PENDING', submittedByUserId: user.sub, policyId: policy.id, approvalWorkflowId: workflow?.id } });
      if (workflow) {
        for (const step of workflow.steps) await tx.leaveApprovalDecision.create({ data: { requestId: created.id, stepId: step.id } });
        if (workflow.steps[0]) await tx.leaveNotification.create({ data: { organizationId: user.organizationId, requestId: created.id, recipientUserId: workflow.steps[0].approverUserId, message: 'Leave request awaiting your approval' } });
@@ -39,6 +39,8 @@ export class LeaveRequestsService {
  async updateStatus(user: TenantJwtUser, id: string, status: 'APPROVED' | 'REJECTED') {
    const request = await this.prisma.leaveRequest.findFirst({ where: { id, organizationId: user.organizationId }, include: { employee: true } });
    if (!request) throw new NotFoundException('Leave request not found');
+   await this.access.requirePermission(user, Permission.APPROVE_LEAVE);
+   if (request.submittedByUserId === user.sub || request.employee.userId === user.sub) throw new ForbiddenException('You cannot approve or reject your own leave submission. Another authorised HR or executive user must review it.');
    if (request.status !== 'PENDING') throw new ConflictException('Leave request already processed');
    if (request.approvalWorkflowId) throw new ConflictException('This request must follow its configured approval workflow');
    if (status === 'REJECTED') {
@@ -104,9 +106,9 @@ export class LeaveRequestsService {
    }
    return tx.leaveRequest.update({ where: { id }, data: { status: 'APPROVED', chargedDays, chargeBreakdown: breakdown, policyId: policy.id } });
  }
- async list(user: TenantJwtUser) { const canManage = await this.access.hasPermission(user,Permission.MANAGE_LEAVE); return this.prisma.leaveRequest.findMany({ where: { organizationId: user.organizationId, ...(canManage ? {} : { employee: { userId: user.sub } }) }, include: { employee: true, leaveType: true }, orderBy: { startDate: 'desc' }, take: 200 }); }
+ async list(user: TenantJwtUser) { const canManage = await this.access.hasPermission(user,Permission.VIEW_LEAVE) || await this.access.hasPermission(user,Permission.APPROVE_LEAVE) || await this.access.hasPermission(user,Permission.MANAGE_LEAVE); return this.prisma.leaveRequest.findMany({ where: { organizationId: user.organizationId, ...(canManage ? {} : { employee: { userId: user.sub } }) }, include: { employee: true, leaveType: true }, orderBy: { startDate: 'desc' }, take: 200 }); }
  async findOne(organizationId: string, id: string, user?: TenantJwtUser) {
-   const canManage = user ? await this.access.hasPermission(user,Permission.MANAGE_LEAVE) : true;
+   const canManage = user ? (await this.access.hasPermission(user,Permission.VIEW_LEAVE) || await this.access.hasPermission(user,Permission.APPROVE_LEAVE) || await this.access.hasPermission(user,Permission.MANAGE_LEAVE)) : true;
    const request = await this.prisma.leaveRequest.findFirst({ where: { id, organizationId, ...(canManage ? {} : { employee: { userId: user!.sub } }) }, include: { employee: true, leaveType: true } });
    if (!request) throw new NotFoundException('Leave request not found'); return request;
  }

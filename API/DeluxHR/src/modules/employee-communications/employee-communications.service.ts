@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { EmployeeStatus, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { mkdir, readFile, writeFile } from 'fs/promises';
@@ -57,19 +57,19 @@ export class EmployeeCommunicationsService {
   const audience = await this.recipients(actor,dto);
   if (!audience.length) throw new BadRequestException('Audience has no active portal employees');
   return this.db.$transaction(async tx => {
-   const announcement = await tx.workforceAnnouncement.create({ data: { organizationId: actor.organizationId, title: dto.title.trim(), body: dto.body.trim(), audience: dto.audience, departmentId: dto.departmentId, workLocationId: dto.workLocationId, teamId: dto.teamId, createdByUserId: actor.sub, publishedAt, expiresAt, important: dto.important ?? false, pinned: dto.pinned ?? false, requiresAcknowledgement: dto.requiresAcknowledgement ?? false, recipients: { create: audience.map(({ id }) => ({ employeeId: id })) } } });
+   const announcement = await tx.workforceAnnouncement.create({ data: { organizationId: actor.organizationId, title: dto.title.trim(), body: dto.body.trim(), audience: dto.audience, departmentId: dto.departmentId, workLocationId: dto.workLocationId, teamId: dto.teamId, createdByUserId: actor.sub, isActive: false, approvalStatus: 'PENDING', publishedAt, expiresAt, important: dto.important ?? false, pinned: dto.pinned ?? false, requiresAcknowledgement: dto.requiresAcknowledgement ?? false, recipients: { create: audience.map(({ id }) => ({ employeeId: id })) } } });
    await this.event(actor,announcement.id,'CREATED',tx); return { ...announcement, recipientCount: audience.length };
   });
  }
  async visible(actor: TenantJwtUser,id: string) {
   const employeeId = await this.employee(actor);
-  const receipt = await this.db.announcementReceipt.findFirst({ where: { announcementId: id, employeeId, announcement: { organizationId: actor.organizationId, isActive: true, publishedAt: { lte: new Date() }, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] } }, include: { announcement: { include: { attachments: { select: { id: true, name: true, mimeType: true, byteSize: true } } } } } });
+  const receipt = await this.db.announcementReceipt.findFirst({ where: { announcementId: id, employeeId, announcement: { organizationId: actor.organizationId, isActive: true, approvalStatus: 'APPROVED', publishedAt: { lte: new Date() }, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] } }, include: { announcement: { include: { attachments: { select: { id: true, name: true, mimeType: true, byteSize: true } } } } } });
   if (!receipt) throw new NotFoundException('Announcement not found');
   return receipt;
  }
  async inbox(actor: TenantJwtUser,includeRead = true) {
   const now = new Date();
-  return this.db.announcementReceipt.findMany({ where: { employeeId: await this.employee(actor), ...(includeRead ? {} : { readAt: null }), announcement: { organizationId: actor.organizationId, isActive: true, publishedAt: { lte: now }, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] } }, include: { announcement: { include: { attachments: { select: { id: true, name: true, mimeType: true, byteSize: true } } } } }, orderBy: [{ announcement: { pinned: 'desc' } }, { announcement: { publishedAt: 'desc' } }], take: 200 });
+  return this.db.announcementReceipt.findMany({ where: { employeeId: await this.employee(actor), ...(includeRead ? {} : { readAt: null }), announcement: { organizationId: actor.organizationId, isActive: true, approvalStatus: 'APPROVED', publishedAt: { lte: now }, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] } }, include: { announcement: { include: { attachments: { select: { id: true, name: true, mimeType: true, byteSize: true } } } } }, orderBy: [{ announcement: { pinned: 'desc' } }, { announcement: { publishedAt: 'desc' } }], take: 200 });
  }
  async mark(actor: TenantJwtUser,id: string,acknowledge = false) {
   const receipt = await this.visible(actor,id);
@@ -89,19 +89,39 @@ export class EmployeeCommunicationsService {
   if (!announcement) throw new NotFoundException('Announcement not found'); return announcement;
  }
  async state(actor: TenantJwtUser,id: string,isActive: boolean) {
-  await this.detail(actor,id);
+  const announcement = await this.detail(actor,id);
+  if (isActive && announcement.approvalStatus !== 'APPROVED') throw new ForbiddenException('Announcement requires Executive Leadership approval before publishing.');
   return this.db.$transaction(async tx => { const updated = await tx.workforceAnnouncement.update({ where: { id }, data: { isActive } }); await this.event(actor,id,isActive ? 'ACTIVATED' : 'DEACTIVATED',tx); return updated; });
+ }
+ async review(actor: TenantJwtUser, id: string, status: 'APPROVED' | 'REJECTED', reason?: string) {
+  if (!['APPROVED','REJECTED'].includes(status)) throw new BadRequestException('Approve or reject the announcement.');
+  const announcement = await this.detail(actor,id);
+  if (announcement.createdByUserId === actor.sub) throw new ForbiddenException('You cannot review your own announcement. Another authorised executive must review it.');
+  if (status === 'REJECTED' && (!reason || reason.trim().length < 3)) throw new BadRequestException('Provide a rejection reason of at least three characters.');
+  if (status === 'APPROVED' && announcement.expiresAt && announcement.expiresAt <= new Date()) throw new BadRequestException('Announcement has expired. Submit a new announcement.');
+  return this.db.$transaction(async tx => {
+   const changed = await tx.workforceAnnouncement.updateMany({ where: { id, organizationId: actor.organizationId, approvalStatus: 'PENDING' }, data: { approvalStatus: status, isActive: status === 'APPROVED', reviewedByUserId: actor.sub, reviewedAt: new Date(), reviewReason: reason?.trim() } });
+   if (!changed.count) throw new ConflictException('Announcement already reviewed. Refresh the queue.');
+   await this.event(actor,id,status,tx);
+   return tx.workforceAnnouncement.findUnique({ where: { id } });
+  });
  }
  async attach(actor: TenantJwtUser,id: string,file: Express.Multer.File) {
   const announcement = await this.detail(actor,id);
-  if (!announcement.isActive) throw new BadRequestException('Inactive announcements cannot receive attachments');
+  if (announcement.createdByUserId !== actor.sub) throw new ForbiddenException('Only the announcement submitter may add attachments before approval.');
+  if (announcement.approvalStatus !== 'PENDING') throw new BadRequestException('Attachments may only be added before approval. Submit a new announcement for content changes.');
   if (!file?.buffer || !file.size || file.size > 10*1024*1024) throw new BadRequestException('A file up to 10 MB is required');
   const bytes = file.buffer;
   const mime = bytes.subarray(0,4).toString('hex') === '25504446' ? 'application/pdf' : bytes.subarray(0,8).toString('hex') === '89504e470d0a1a0a' ? 'image/png' : bytes.subarray(0,3).toString('hex') === 'ffd8ff' ? 'image/jpeg' : null;
   if (!mime) throw new BadRequestException('Only PDF, PNG or JPEG files are accepted');
   const key = randomUUID(); await mkdir(join(root(),actor.organizationId,id),{ recursive: true }); await writeFile(join(root(),actor.organizationId,id,key),bytes,{ flag: 'wx' });
-  const attachment = await this.db.announcementAttachment.create({ data: { announcementId: id, name: file.originalname.slice(0,200), mimeType: mime, byteSize: file.size, storageKey: key } });
-  await this.event(actor,id,'ATTACHMENT_ADDED'); return { id: attachment.id, name: attachment.name, mimeType: mime, byteSize: file.size };
+  return this.db.$transaction(async tx => {
+   await tx.$queryRaw`SELECT id FROM "WorkforceAnnouncement" WHERE id = ${id} AND "organizationId" = ${actor.organizationId} FOR UPDATE`;
+   const pending = await tx.workforceAnnouncement.findFirst({ where: { id, organizationId: actor.organizationId, approvalStatus: 'PENDING', createdByUserId: actor.sub } });
+   if (!pending) throw new ConflictException('Announcement already reviewed. Attachments cannot change published content.');
+   const attachment = await tx.announcementAttachment.create({ data: { announcementId: id, name: file.originalname.slice(0,200), mimeType: mime, byteSize: file.size, storageKey: key } });
+   await this.event(actor,id,'ATTACHMENT_ADDED',tx); return { id: attachment.id, name: attachment.name, mimeType: mime, byteSize: file.size };
+  });
  }
  async download(actor: TenantJwtUser,id: string,attachmentId: string,staff = false) {
   if (staff) await this.detail(actor,id); else await this.visible(actor,id);

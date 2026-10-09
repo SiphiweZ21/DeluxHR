@@ -504,8 +504,11 @@ export class EmployeesService {
     employeeId: string,
     dto: UpdateEmployeeDto,
     actor: TenantJwtUser,
+    approvedChange = false,
+    transaction?: Prisma.TransactionClient,
   ) {
-    const existingEmployee = await this.prisma.employee.findFirst({
+    const db = transaction ?? this.prisma;
+    const existingEmployee = await db.employee.findFirst({
       where: {
         id: employeeId,
         organizationId,
@@ -520,7 +523,7 @@ export class EmployeesService {
       );
     }
     if (dto.departmentId) {
-      const department = await this.prisma.department.findFirst({
+      const department = await db.department.findFirst({
         where: {
           id: dto.departmentId,
           organizationId,
@@ -540,7 +543,7 @@ export class EmployeesService {
         dto.departmentId !== undefined ||
         dto.jobTitle !== undefined)
     ) {
-      selectedPosition = await this.prisma.position.findFirst({
+      selectedPosition = await db.position.findFirst({
         where: {
           id: effectivePosition,
           organizationId,
@@ -568,7 +571,7 @@ export class EmployeesService {
       normalizedEmail != null &&
       normalizedEmail !== existingEmployee.email?.toLowerCase()
     ) {
-      const duplicate = await this.prisma.employee.findFirst({
+      const duplicate = await db.employee.findFirst({
         where: {
           organizationId,
           email: normalizedEmail,
@@ -604,7 +607,7 @@ export class EmployeesService {
       effectiveIdentityType &&
       normalizedIdentityNumber
     ) {
-      duplicateIdentityEmployee = await this.prisma.employee.findFirst({
+      duplicateIdentityEmployee = await db.employee.findFirst({
         where: {
           organizationId,
           identityType: effectiveIdentityType,
@@ -638,7 +641,7 @@ export class EmployeesService {
       const code = normalizeEmployeeCode(dto.employeeCode);
       if (
         code &&
-        (await this.prisma.employee.findFirst({
+        (await db.employee.findFirst({
           where: {
             organizationId,
             employeeCode: code,
@@ -769,7 +772,13 @@ export class EmployeesService {
     if (!changedFields.length) {
       return this.findOne(organizationId, employeeId);
     }
-    const employee = await this.prisma.$transaction(async (tx) => {
+    if (!approvedChange && existingEmployee.status !== EmployeeStatus.PENDING_VERIFICATION && changedFields.length) {
+      const change = await db.employeeProfileChange.create({ data: { organizationId, employeeId, proposed: JSON.parse(JSON.stringify(dto)), baseUpdatedAt: existingEmployee.updatedAt, submittedByUserId: actor.sub } });
+      await this.auditService.log({ organizationId, action: 'EMPLOYEE_CHANGE_SUBMITTED', entity: 'EmployeeProfileChange', entityId: change.id, actorUserId: actor.sub, actorEmail: actor.email, actorRole: actor.role, metadata: { employeeId, changedFields } });
+      return { ...this.sanitizeEmployee(existingEmployee), pendingChangeId: change.id, approvalMessage: 'Changes submitted for HR or Executive Leadership approval. Existing details remain in use.' };
+    }
+    if (!approvedChange && existingEmployee.status === EmployeeStatus.PENDING_VERIFICATION && changedFields.length) data.lastSubmittedByUserId = actor.sub;
+    const apply = async (tx: Prisma.TransactionClient) => {
       const updatedEmployee = await tx.employee.update({
         where: {
           id: employeeId,
@@ -800,7 +809,8 @@ export class EmployeesService {
       }
 
       return updatedEmployee;
-    });
+    };
+    const employee = transaction ? await apply(transaction) : await this.prisma.$transaction(apply);
     await this.auditService.log({
       organizationId,
       action: 'EMPLOYEE_PROFILE_UPDATED',
@@ -813,8 +823,30 @@ export class EmployeesService {
         changedFields,
         duplicateIdentityRiskDetected: Boolean(duplicateIdentityEmployee),
       },
-    });
+    }, transaction);
     return this.sanitizeEmployee(employee);
+  }
+  async profileChanges(organizationId: string) {
+    return this.prisma.employeeProfileChange.findMany({ where: { organizationId }, orderBy: { createdAt: 'desc' }, take: 200 });
+  }
+  async reviewProfileChange(actor: TenantJwtUser, id: string, status: 'APPROVED' | 'REJECTED', reason?: string) {
+    return this.prisma.$transaction(async tx => {
+      const change = await tx.employeeProfileChange.findFirst({ where: { id, organizationId: actor.organizationId } });
+      if (!change) throw new NotFoundException('Employee change not found');
+      if (change.status !== 'PENDING') throw new BadRequestException('Change already reviewed');
+      const employee = await tx.employee.findFirst({ where: { id: change.employeeId, organizationId: actor.organizationId } });
+      if (!employee) throw new NotFoundException('Employee not found');
+      if (change.submittedByUserId === actor.sub || employee.userId === actor.sub) throw new ForbiddenException('You cannot review your own employee change. Another authorised HR or executive user must review it.');
+      if (status === 'REJECTED' && (!reason || reason.trim().length < 3)) throw new BadRequestException('Provide a rejection reason.');
+      if (status === 'APPROVED') {
+        if (employee.updatedAt.getTime() !== change.baseUpdatedAt.getTime()) throw new BadRequestException('Employee details changed since submission. Reject this change and submit an updated proposal.');
+        await this.update(actor.organizationId, change.employeeId, change.proposed as unknown as UpdateEmployeeDto, actor, true, tx);
+      }
+      const changed = await tx.employeeProfileChange.updateMany({ where: { id, organizationId: actor.organizationId, status: 'PENDING' }, data: { status, reviewedByUserId: actor.sub, reviewedAt: new Date(), reason: reason?.trim() } });
+      if (!changed.count) throw new BadRequestException('Change already reviewed');
+      await this.auditService.log({ organizationId: actor.organizationId, action: `EMPLOYEE_CHANGE_${status}`, entity: 'EmployeeProfileChange', entityId: id, actorUserId: actor.sub, actorEmail: actor.email, actorRole: actor.role, reason },tx);
+      return tx.employeeProfileChange.findUnique({ where: { id } });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
   async activate(
     organizationId: string,
@@ -1131,7 +1163,7 @@ export class EmployeesService {
         'Employee creator information is missing. This legacy employee requires an administrative review before activation.',
       );
     }
-    if (employee.createdByUserId === actor.sub) {
+    if (employee.createdByUserId === actor.sub || employee.lastSubmittedByUserId === actor.sub || employee.userId === actor.sub) {
       throw new ForbiddenException(
         'The user who created the employee cannot activate the same employee',
       );
@@ -1159,26 +1191,13 @@ export class EmployeesService {
         'Employee creator does not belong to this organization',
       );
     }
-    const allowedCheckerRoles = this.getAllowedCheckerRoles(maker.role);
-    if (!allowedCheckerRoles.includes(UserRole.EXECUTIVE))
-      allowedCheckerRoles.push(UserRole.EXECUTIVE);
-    if (!allowedCheckerRoles.includes(actor.role)) {
-      if (
-        onboarding &&
-        maker.role === UserRole.COMPANY_ADMIN &&
-        actor.role === UserRole.COMPANY_ADMIN
-      ) {
-        await assertPendingOnboardingChecker(
-          db as Prisma.TransactionClient,
-          organizationId,
-          maker.id,
-          actor.sub,
-        );
-        return { ...maker, onboardingIndependentAdmin: true };
-      }
-      throw new ForbiddenException(
-        `Role ${actor.role} is not permitted to activate an employee created by ${maker.role}`,
-      );
+    if (!onboarding && maker.role === UserRole.COMPANY_ADMIN && actor.role === UserRole.COMPANY_ADMIN) {
+      const organization = await db.organization.findUnique({ where: { id: organizationId }, select: { status: true } });
+      if (organization?.status !== 'ACTIVE') throw new ForbiddenException('Pending company approval must use the independent onboarding checker flow.');
+    }
+    if (onboarding && maker.role === UserRole.COMPANY_ADMIN && actor.role === UserRole.COMPANY_ADMIN) {
+      await assertPendingOnboardingChecker(db as Prisma.TransactionClient, organizationId, maker.id, actor.sub);
+      return { ...maker, onboardingIndependentAdmin: true };
     }
     return { ...maker, onboardingIndependentAdmin: false };
   }

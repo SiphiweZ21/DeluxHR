@@ -33,8 +33,8 @@ export class EarlyPayController {
     private readonly access: AccessControlService,
     private readonly db: PrismaService,
   ) {}
-  private async ownOrAdministrator(user: TenantJwtUser, employeeId: string) {
-    if (await this.access.hasPermission(user, Permission.APPROVE_EARLY_PAY))
+  private async ownOrAdministrator(user: TenantJwtUser, employeeId: string, write = false) {
+    if (await this.access.hasPermission(user, Permission.APPROVE_EARLY_PAY) || await this.access.hasPermission(user, write ? Permission.PREPARE_EARLY_PAY : Permission.VIEW_EARLY_PAY))
       return;
     if (!(await this.access.hasPermission(user, Permission.REQUEST_EARLY_PAY)))
       throw new ForbiddenException('Early Pay request permission is required.');
@@ -70,7 +70,7 @@ export class EarlyPayController {
     await this.ownOrAdministrator(user, employeeId);
     return this.service.quote(user.organizationId, employeeId);
   }
-  @Get('requests') @RequirePermissions(Permission.APPROVE_EARLY_PAY) requests(
+  @Get('requests') @RequirePermissions(Permission.VIEW_EARLY_PAY) requests(
     @CurrentTenantUser() user: TenantJwtUser,
   ) {
     return this.service.listAll(user.organizationId);
@@ -86,8 +86,8 @@ export class EarlyPayController {
     @Body() dto: CreateEarlyPayRequestDto,
     @CurrentTenantUser() user: TenantJwtUser,
   ) {
-    await this.ownOrAdministrator(user, dto.employeeId);
-    return this.service.createRequest(user.organizationId, dto);
+    await this.ownOrAdministrator(user, dto.employeeId, true);
+    return this.service.createRequest(user.organizationId, dto, user.sub);
   }
   @Patch('requests/:id/review')
   @RequirePermissions(Permission.APPROVE_EARLY_PAY)

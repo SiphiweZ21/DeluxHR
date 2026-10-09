@@ -3,7 +3,7 @@ import {
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
-import { Feature, Prisma, UserRole } from '@prisma/client';
+import { Feature, Permission, Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccessControlService } from '../../common/access/access-control.service';
 import { EntitlementsService } from '../../common/entitlements/entitlements.service';
@@ -16,7 +16,7 @@ export class WorkspaceAccessService {
     private readonly entitlements: EntitlementsService,
   ) {}
   async current(actor: TenantJwtUser) {
-    const [permissions, enabled, flags, subscription, employee] =
+    const [permissions, enabled, flags, subscription, employee, organization] =
       await Promise.all([
         this.access.getEffectivePermissions(actor),
         this.entitlements.getEnabledFeatures(actor.organizationId),
@@ -31,8 +31,9 @@ export class WorkspaceAccessService {
             userId: actor.sub,
             status: 'ACTIVE',
           },
-          select: { id: true },
+          select: { id: true, firstName: true, lastName: true, jobTitle: true, position: { select: { name: true } } },
         }),
+        this.db.organization.findUnique({ where: { id: actor.organizationId }, select: { name: true, legalName: true } }),
       ]);
     const available =
       !!subscription &&
@@ -44,6 +45,8 @@ export class WorkspaceAccessService {
       permissions,
       features: enabled,
       employeeLinked: !!employee,
+      companyName: organization?.name?.trim() || organization?.legalName?.trim() || null,
+      employeeProfile: employee ? { name: `${employee.firstName} ${employee.lastName}`, jobPosition: employee.position?.name || employee.jobTitle || null } : null,
       subscription: subscription
         ? {
             status: subscription.status,
@@ -61,6 +64,22 @@ export class WorkspaceAccessService {
         included: available && subscription!.package.features.includes(feature),
       })),
     };
+  }
+  async approvals(actor: TenantJwtUser) {
+    const [permissions, features] = await Promise.all([this.access.getEffectivePermissions(actor), this.entitlements.getEnabledFeatures(actor.organizationId)]);
+    const has = (p: Permission) => permissions.some(g => g.permission === p && g.scope === 'ORGANIZATION');
+    const org = { organizationId: actor.organizationId };
+    const items: { label: string; href: string; count: number; canApprove: boolean }[] = [];
+    if (features.includes(Feature.CORE_HR) && has(Permission.VIEW_EMPLOYEES)) {
+      const [employees, changes] = await Promise.all([this.db.employee.count({ where: { ...org, status: 'PENDING_VERIFICATION' } }),this.db.employeeProfileChange.count({ where: { ...org, status: 'PENDING' } })]);
+      items.push({ label: 'Employees & employee changes', href: '/employees', count: employees + changes, canApprove: has(Permission.APPROVE_EMPLOYEES) });
+    }
+    if (features.includes(Feature.LEAVE) && (has(Permission.VIEW_LEAVE) || has(Permission.APPROVE_LEAVE) || has(Permission.MANAGE_LEAVE))) items.push({ label: 'Leave requests', href: '/leave-requests', count: await this.db.leaveRequest.count({ where: { ...org, status: 'PENDING' } }), canApprove: has(Permission.APPROVE_LEAVE) });
+    if (features.includes(Feature.PAYROLL) && has(Permission.VIEW_PAYROLL)) items.push({ label: 'Payroll runs', href: '/payroll-runs', count: await this.db.payrollRun.count({ where: { ...org, status: 'REVIEWED' } }), canApprove: has(Permission.APPROVE_PAYROLL) });
+    if (features.includes(Feature.EARLY_PAY) && has(Permission.VIEW_EARLY_PAY)) items.push({ label: 'Early Pay requests', href: '/early-pay', count: await this.db.earlyPayRequest.count({ where: { ...org, status: 'PENDING' } }), canApprove: has(Permission.APPROVE_EARLY_PAY) });
+    if (features.includes(Feature.TIMESHEETS) && has(Permission.VIEW_ATTENDANCE)) items.push({ label: 'Timesheets', href: '/timesheets', count: await this.db.timesheet.count({ where: { ...org, status: 'SUBMITTED' } }), canApprove: has(Permission.APPROVE_TIMESHEETS) });
+    if (features.includes(Feature.CORE_HR) && has(Permission.VIEW_COMMUNICATIONS)) items.push({ label: 'Announcements', href: '/communications', count: await this.db.workforceAnnouncement.count({ where: { ...org, approvalStatus: 'PENDING' } }), canApprove: has(Permission.APPROVE_COMMUNICATIONS) });
+    return items;
   }
   async setService(
     actor: TenantJwtUser,

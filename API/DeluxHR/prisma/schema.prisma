@@ -38,11 +38,14 @@ enum Permission {
   VIEW_TEAM
   VIEW_SELF
 
+  VIEW_LEAVE
+  APPROVE_LEAVE
   MANAGE_LEAVE
   VIEW_HR_REQUESTS
   MANAGE_HR_REQUESTS
   VIEW_COMMUNICATIONS
   MANAGE_COMMUNICATIONS
+  APPROVE_COMMUNICATIONS
   APPROVE_TEAM_LEAVE
   REQUEST_LEAVE
 
@@ -67,6 +70,8 @@ enum Permission {
   VIEW_WORKFORCE_COST
   VIEW_WORKFORCE_INSIGHTS
 
+  VIEW_EARLY_PAY
+  PREPARE_EARLY_PAY
   MANAGE_EARLY_PAY_POLICY
   APPROVE_EARLY_PAY
   REQUEST_EARLY_PAY
@@ -702,6 +707,7 @@ model Department {
 }
 
 model Employee {
+  lastSubmittedByUserId String?
   positionId String?
   position Position? @relation(fields:[organizationId,departmentId,positionId],references:[organizationId,departmentId,id],onDelete:Restrict)
   id              String  @id @default(uuid())
@@ -806,6 +812,7 @@ model LeaveType {
 }
 
 model LeaveRequest {
+  submittedByUserId String?
   id             String   @id @default(uuid())
   organizationId String
   employeeId     String
@@ -1333,6 +1340,7 @@ model PayslipDelivery {
 }
 
 model Timesheet {
+  submittedByUserId String?
   id             String @id @default(uuid())
   organizationId String
   employeeId     String
@@ -1685,6 +1693,7 @@ model EarlyPayPolicy {
 }
 
 model EarlyPayRequest {
+  submittedByUserId String?
   id                       String                @id @default(uuid())
   organizationId           String
   employeeId               String
@@ -2548,6 +2557,10 @@ model HrRequestEvent {
   @@index([requestId, createdAt])
 }
 model WorkforceAnnouncement {
+  approvalStatus String @default("PENDING")
+  reviewedByUserId String?
+  reviewedAt DateTime?
+  reviewReason String?
   id String @id @default(uuid())
   organizationId String
   title String
@@ -2966,4 +2979,19 @@ model AuthThrottle {
   count Int @default(0)
   resetAt DateTime
   @@index([resetAt])
+}
+
+model EmployeeProfileChange {
+ id String @id @default(uuid())
+ organizationId String
+ employeeId String
+ proposed Json
+ baseUpdatedAt DateTime
+ submittedByUserId String
+ status String @default("PENDING")
+ reviewedByUserId String?
+ reviewedAt DateTime?
+ reason String?
+ createdAt DateTime @default(now())
+ @@index([organizationId, status])
 }

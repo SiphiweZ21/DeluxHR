@@ -25,7 +25,7 @@ export const changeHrStatus = (key: string, status: HrStatus) => request<HrReque
 export const escalateHrRequest = (key: string, userId: string, reason: string) => request<HrRequest>(`hr-requests/admin/${id(key)}/escalate`, 'POST', { userId, reason });
 export const hrTransitions: Record<HrStatus, HrStatus[]> = { OPEN: ['IN_PROGRESS'], IN_PROGRESS: ['RESOLVED'], RESOLVED: ['OPEN', 'CLOSED'], CLOSED: [] };
 export type Audience = 'COMPANY' | 'DEPARTMENT' | 'LOCATION' | 'TEAM';
-export type Announcement = { id: string; title: string; body: string; audience: Audience; departmentId: string | null; workLocationId: string | null; teamId: string | null; publishedAt: string; expiresAt: string | null; isActive: boolean; pinned: boolean; important: boolean; requiresAcknowledgement: boolean; recipientCount?: number; _count?: { recipients: number } };
+export type Announcement = { approvalStatus?: string; createdByUserId?: string; reviewedByUserId?: string; reviewedAt?: string; reviewReason?: string; id: string; title: string; body: string; audience: Audience; departmentId: string | null; workLocationId: string | null; teamId: string | null; publishedAt: string; expiresAt: string | null; isActive: boolean; pinned: boolean; important: boolean; requiresAcknowledgement: boolean; recipientCount?: number; _count?: { recipients: number } };
 export type NewAnnouncement = { title: string; body: string; audience: Audience; departmentId?: string; workLocationId?: string; teamId?: string; publishedAt?: string; expiresAt?: string; pinned: boolean; important: boolean; requiresAcknowledgement: boolean };
 export type AnnouncementReceipt = { id: string; announcementId: string; employeeId: string; readAt: string | null; acknowledgedAt: string | null; announcement: Announcement & { attachments: ServiceAttachment[] } };
 export type AnnouncementDetail = Announcement & { recipients: { employeeId: string; readAt: string | null; acknowledgedAt: string | null }[]; attachments: ServiceAttachment[]; events: ServiceEvent[] };
@@ -58,4 +58,6 @@ export async function downloadServiceFile(path: string, attachment: ServiceAttac
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 export function dateTimeLabel(value: string) { return new Date(value).toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' }); }
-export function announcementState(item: Announcement) { const now = Date.now(); return !item.isActive ? 'INACTIVE' : item.expiresAt && Date.parse(item.expiresAt) <= now ? 'EXPIRED' : Date.parse(item.publishedAt) > now ? 'SCHEDULED' : 'PUBLISHED'; }
+export function announcementState(item: Announcement) { if(item.approvalStatus && item.approvalStatus !== "APPROVED") return item.approvalStatus === "PENDING" ? "AWAITING APPROVAL" : "REJECTED"; const now = Date.now(); return !item.isActive ? 'INACTIVE' : item.expiresAt && Date.parse(item.expiresAt) <= now ? 'EXPIRED' : Date.parse(item.publishedAt) > now ? 'SCHEDULED' : 'PUBLISHED'; }
+
+export const reviewAnnouncement = (key: string, status: 'APPROVED' | 'REJECTED', reason?: string) => request<Announcement>(`communications/admin/announcements/${id(key)}/review`, 'POST', {status, reason});

@@ -290,8 +290,7 @@ export class PayrollService {
 
     if (
       target === PayrollRunStatus.APPROVED &&
-      settings.approvalMode === 'MAKER_CHECKER' &&
-      (current.calculatedByUserId === userId ||
+      (current.employee.userId === userId || current.calculatedByUserId === userId ||
         current.reviewedByUserId === userId)
     ) {
       throw new BadRequestException(

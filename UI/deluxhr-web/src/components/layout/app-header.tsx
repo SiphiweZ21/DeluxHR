@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import { useWorkspaceAccess } from './workspace-access';
 import { getUser } from '../../lib/auth';
 
 const titles: Record<string, string> = {
@@ -46,6 +47,7 @@ export function AppHeader({
   onMenuClick: () => void;
 }) {
   const pathname = usePathname();
+  const {access} = useWorkspaceAccess();
 
   const [user, setUser] = useState<HeaderUser | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -59,7 +61,7 @@ export function AppHeader({
 
   const role =
     mounted && user?.role
-      ? user.role
+      ? user.role.toLowerCase().split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
       : 'Administrator';
 
   const email =
@@ -69,11 +71,11 @@ export function AppHeader({
 
   const initials =
     mounted && user?.email
-      ? user.email.slice(0, 2).toUpperCase()
+      ? (access?.employeeProfile?.name.split(/\s+/).filter(Boolean).map(part => part[0]).slice(0, 2).join('') || user.email.slice(0, 2)).toUpperCase()
       : 'AD';
 
   return (
-    <header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-slate-200/80 bg-white/95 px-4 backdrop-blur md:px-7">
+    <header className="sticky top-0 z-30 flex min-h-[96px] py-3 gap-3 items-center justify-between border-b border-slate-200/80 bg-white/95 px-4 backdrop-blur md:px-7">
       <div className="flex items-center gap-3">
         <button
           onClick={onMenuClick}
@@ -83,11 +85,12 @@ export function AppHeader({
           <span className="text-xl">☰</span>
         </button>
 
-        <div>
+        <div className="min-w-0">
           <p className="text-xs font-medium text-slate-400">
             DeluxHR Workspace
           </p>
 
+          <p className="max-w-[45vw] break-words text-xs font-medium text-slate-600 md:max-w-md">{access?.companyName || 'Company workspace'}</p>
           <h2 className="text-base font-bold text-slate-900">
             {title}
           </h2>
@@ -95,12 +98,13 @@ export function AppHeader({
       </div>
 
       <div className="flex items-center gap-3">
-        <div className="hidden text-right sm:block">
-          <p className="text-sm font-semibold text-slate-800">
+        <div className="text-right">
+          {access?.employeeProfile?.jobPosition && <p className="max-w-[210px] break-words text-sm font-semibold text-slate-900">{access.employeeProfile.jobPosition}</p>}
+          <p className="text-xs font-medium text-slate-600">
             {role}
           </p>
 
-          <p className="max-w-[210px] truncate text-xs text-slate-400">
+          <p className="hidden max-w-[210px] truncate text-xs text-slate-500 sm:block">
             {email}
           </p>
         </div>

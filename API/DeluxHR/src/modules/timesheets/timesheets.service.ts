@@ -1,5 +1,6 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { OvertimeApprovalStatus, PayrollBatchStatus, Prisma, TimesheetStatus } from '@prisma/client';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { OvertimeApprovalStatus, PayrollBatchStatus, Permission, Prisma, TimesheetStatus } from '@prisma/client';
+import { AccessControlService } from '../../common/access/access-control.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { RecurringSchedulesService, calendarDate } from '../recurring-schedules/recurring-schedules.service';
@@ -21,7 +22,7 @@ export function calculateDailyHours(elapsedMinutes: number, unpaidBreakMinutes: 
 
 @Injectable()
 export class TimesheetsService {
-  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly schedules: RecurringSchedulesService) {}
+  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly schedules: RecurringSchedulesService, private readonly access: AccessControlService) {}
   private async log(user: TenantJwtUser, entity: string, id: string, action: string, reason?: string) {
     await this.audit.log({ organizationId: user.organizationId, entity, entityId: id, action, actorUserId: user.sub, actorEmail: user.email, actorRole: user.role, reason });
   }
@@ -194,7 +195,12 @@ export class TimesheetsService {
     if (status === OvertimeApprovalStatus.PENDING) throw new BadRequestException('Select APPROVED or REJECTED');
     const approval = await this.prisma.overtimeApproval.findFirst({ where: { id, organizationId: user.organizationId }, include: { timesheet: true } });
     if (!approval) throw new NotFoundException('Overtime request not found');
-    await this.editable(user.organizationId, approval.timesheetId);
+    const employee = await this.prisma.employee.findFirst({ where: { id: approval.employeeId, organizationId: user.organizationId }, select: { userId: true } });
+    if (approval.timesheet.submittedByUserId === user.sub || employee?.userId === user.sub) throw new ForbiddenException('You cannot review your own overtime submission.');
+    const ownAdjustment = await this.prisma.timesheetAdjustment.findFirst({ where: { timesheetId: approval.timesheetId, actorUserId: user.sub } });
+    if (ownAdjustment) throw new ForbiddenException('Another authorised reviewer must review overtime you prepared.');
+    await this.unlocked(user.organizationId, approval.timesheet.periodStart, approval.timesheet.periodEnd);
+    if (['APPROVED','LOCKED'].includes(approval.timesheet.status)) throw new ConflictException('Reviewed or locked timesheets cannot change overtime approvals.');
     if (status === OvertimeApprovalStatus.APPROVED && (!Number.isInteger(minutes) || minutes! < 0 || minutes! > approval.requestedMinutes)) throw new BadRequestException('Approved minutes must be within the request');
     const changed = await this.prisma.overtimeApproval.updateMany({ where: { id, organizationId: user.organizationId, status: OvertimeApprovalStatus.PENDING }, data: { status, approvedMinutes: status === OvertimeApprovalStatus.APPROVED ? minutes : 0, reason: reason?.trim(), reviewedAt: new Date(), reviewedByUserId: user.sub } });
     if (!changed.count) throw new ConflictException('Overtime was already reviewed');
@@ -202,17 +208,24 @@ export class TimesheetsService {
     return this.prisma.overtimeApproval.findUnique({ where: { id } });
   }
   async status(user: TenantJwtUser, id: string, next: TimesheetStatus) {
+    await this.access.requirePermission(user, [TimesheetStatus.APPROVED, TimesheetStatus.REJECTED].includes(next as any) ? Permission.APPROVE_TIMESHEETS : Permission.MANAGE_ATTENDANCE);
     const sheet = await this.requireSheet(user.organizationId, id);
     await this.unlocked(user.organizationId, sheet.periodStart, sheet.periodEnd);
     const allowed: Record<string, TimesheetStatus[]> = { DRAFT: [TimesheetStatus.SUBMITTED], REJECTED: [TimesheetStatus.DRAFT,TimesheetStatus.SUBMITTED], SUBMITTED: [TimesheetStatus.APPROVED,TimesheetStatus.REJECTED] };
     if (!allowed[sheet.status]?.includes(next)) throw new ConflictException('Invalid timesheet status transition');
+    if ([TimesheetStatus.APPROVED, TimesheetStatus.REJECTED].includes(next as any)) {
+      const employee = await this.prisma.employee.findFirst({ where: { id: sheet.employeeId, organizationId: user.organizationId }, select: { userId: true } });
+      const ownAdjustment = await this.prisma.timesheetAdjustment.findFirst({ where: { timesheetId: sheet.id, actorUserId: user.sub } });
+      if (ownAdjustment) throw new ForbiddenException('Another authorised user must review a timesheet you prepared.');
+      if (sheet.submittedByUserId === user.sub || employee?.userId === user.sub) throw new ForbiddenException("You cannot review your own timesheet submission. Another authorised operations or executive user must review it.");
+    }
     if (next === TimesheetStatus.APPROVED) {
       const pending = sheet.entries.some(entry => entry.overtimeHours > 0 && entry.overtimeApproval?.status === OvertimeApprovalStatus.PENDING);
       if (pending) throw new ConflictException('Review all overtime before approving timesheet');
       const missing = sheet.entries.some(entry => entry.overtimeHours > 0 && !entry.overtimeApproval);
       if (missing) throw new ConflictException('Overtime approval missing for an entry');
     }
-    const changed = await this.prisma.timesheet.updateMany({ where: { id, organizationId: user.organizationId, status: sheet.status }, data: { status: next, ...(next === TimesheetStatus.SUBMITTED ? { submittedAt: new Date() } : {}), ...(next === TimesheetStatus.APPROVED ? { approvedAt: new Date(), approvedByUserId: user.sub, reviewedAt: new Date(), reviewedByUserId: user.sub } : {}), ...(next === TimesheetStatus.REJECTED ? { rejectedAt: new Date(), reviewedAt: new Date(), reviewedByUserId: user.sub } : {}) } });
+    const changed = await this.prisma.timesheet.updateMany({ where: { id, organizationId: user.organizationId, status: sheet.status }, data: { status: next, ...(next === TimesheetStatus.SUBMITTED ? { submittedAt: new Date(), submittedByUserId: user.sub } : {}), ...(next === TimesheetStatus.APPROVED ? { approvedAt: new Date(), approvedByUserId: user.sub, reviewedAt: new Date(), reviewedByUserId: user.sub } : {}), ...(next === TimesheetStatus.REJECTED ? { rejectedAt: new Date(), reviewedAt: new Date(), reviewedByUserId: user.sub } : {}) } });
     if (!changed.count) throw new ConflictException('Timesheet status changed concurrently');
     await this.log(user, 'Timesheet', id, `TIMESHEET_${next}`); return this.findOne(user.organizationId, id);
   }

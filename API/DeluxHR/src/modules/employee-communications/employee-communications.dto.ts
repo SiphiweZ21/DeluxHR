@@ -14,3 +14,8 @@ export class AnnouncementDto {
  @IsOptional() @IsBoolean() requiresAcknowledgement?: boolean;
 }
 export class AnnouncementStateDto { @IsBoolean() isActive!: boolean; }
+
+export class AnnouncementReviewDto {
+ @IsIn(['APPROVED','REJECTED']) status!: 'APPROVED' | 'REJECTED';
+ @IsOptional() @IsString() @MaxLength(2000) reason?: string;
+}

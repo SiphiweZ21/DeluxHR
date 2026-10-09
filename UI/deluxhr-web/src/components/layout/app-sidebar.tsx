@@ -1,4 +1,5 @@
 'use client';
+import { useWorkspaceAccess } from './workspace-access';
 import { GroupedNavigation } from './grouped-navigation';
 
 import Link from 'next/link';
@@ -7,6 +8,7 @@ import { logout } from '../../lib/auth';
 
 export function AppSidebar() {
   const router = useRouter();
+  const {access} = useWorkspaceAccess();
   function handleLogout() { logout(); router.push('/login'); router.refresh(); }
 
   return (
@@ -21,7 +23,7 @@ export function AppSidebar() {
         <GroupedNavigation/>
       </nav>
       <div className="border-t border-slate-100 p-4">
-        <div className="mb-3 rounded-xl bg-slate-50 p-3"><p className="text-xs font-semibold text-slate-800">DeluxHR Workspace</p><p className="mt-0.5 text-[11px] text-slate-500">Secure organization access</p></div>
+        <div className="mb-3 rounded-xl bg-slate-50 p-3"><p className="text-xs font-semibold text-slate-800">DeluxHR Workspace</p><p className="mt-0.5 text-sm font-medium break-words text-slate-600">{access?.companyName || 'Company workspace'}</p></div>
         <button onClick={handleLogout} className="flex w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900">Sign out</button>
       </div>
     </aside>

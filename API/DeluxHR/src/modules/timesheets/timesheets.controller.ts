@@ -44,7 +44,7 @@ export class TimesheetsController {
  one(@Param('id') id: string,@CurrentTenantUser() user: TenantJwtUser) { return this.service.findOne(user.organizationId,id); }
  @Get(':id/adjustments') @RequirePermissions(Permission.VIEW_ATTENDANCE)
  adjustments(@Param('id') id: string,@CurrentTenantUser() user: TenantJwtUser) { return this.service.adjustments(user.organizationId,id); }
- @Patch(':id/status') @RequirePermissions(Permission.APPROVE_TIMESHEETS)
+ @Patch(':id/status')
  status(@Param('id') id: string,@Body() dto: StatusDto,@CurrentTenantUser() user: TenantJwtUser) { return this.service.status(user,id,dto.status); }
  @Post('entries') @RequirePermissions(Permission.MANAGE_ATTENDANCE)
  add(@Body() dto: CreateTimesheetEntryDto,@Query('reason') reason: string,@CurrentTenantUser() user: TenantJwtUser) { return this.service.addEntry(user,dto,reason); }

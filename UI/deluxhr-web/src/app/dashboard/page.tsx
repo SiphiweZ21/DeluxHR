@@ -1,5 +1,6 @@
 'use client';
 
+import { ApprovalSummary } from '../../components/approval-summary';
 import NextLink from 'next/link';
 import type { ComponentProps } from 'react';
 import { useWorkspaceAccess } from '../../components/layout/workspace-access';
@@ -290,6 +291,8 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-7">
+      <ApprovalSummary/>
+
       <section className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
         <div>
           <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">

@@ -68,6 +68,12 @@ export function AccessPresets() {
     );
   }
   const relevant = [
+    "VIEW_LEAVE", "MANAGE_LEAVE", "APPROVE_LEAVE",
+    "VIEW_EARLY_PAY", "PREPARE_EARLY_PAY", "APPROVE_EARLY_PAY",
+    "VIEW_COMMUNICATIONS", "MANAGE_COMMUNICATIONS", "APPROVE_COMMUNICATIONS",
+    "VIEW_ATTENDANCE", "MANAGE_ATTENDANCE", "APPROVE_TIMESHEETS",
+    "GENERATE_PAYROLL", "REVIEW_PAYROLL", "APPROVE_PAYROLL",
+    "PREPARE_PAYROLL_PAYMENTS", "APPROVE_PAYROLL_PAYMENTS", "EXPORT_PAYROLL_PAYMENTS",
     "VIEW_EMPLOYEES",
     "ADD_EMPLOYEES",
     "MANAGE_EMPLOYEES",
@@ -152,6 +158,7 @@ export function AccessPresets() {
             change below. Executive summaries and detailed payroll access are
             separate.
           </p>
+          <p className="text-sm">Administration prepares and submits. HR or Executive Leadership approves employees and leave; Finance or Executive Leadership approves payroll and Early Pay; Operations Manager or Executive Leadership approves timesheets; Executive Leadership approves announcements. Nobody approves their own submissions.</p>
           {relevant.map((permission) => (
             <label key={permission} className="grid gap-2 sm:grid-cols-2">
               {permission.replaceAll("_", " ")}

@@ -10,7 +10,7 @@ import { FeaturesGuard } from '../../common/entitlements/features.guard';
 import { RequireFeatures } from '../../common/entitlements/require-features.decorator';
 import { PermissionsGuard } from '../../common/access/permissions.guard';
 import { RequirePermissions } from '../../common/access/require-permissions.decorator';
-import { AnnouncementDto, AnnouncementStateDto, TeamDto } from './employee-communications.dto';
+import { AnnouncementDto, AnnouncementStateDto, AnnouncementReviewDto, TeamDto } from './employee-communications.dto';
 import { EmployeeCommunicationsService } from './employee-communications.service';
 function send(res: Response, name: string, mime: string, bytes: Buffer) { res.setHeader('Content-Type',mime); res.setHeader('Content-Disposition',`attachment; filename="${name.replace(/[^a-zA-Z0-9_.-]/g,'_')}"`); res.setHeader('Cache-Control','no-store'); res.setHeader('X-Content-Type-Options','nosniff'); res.send(bytes); }
 @Controller('communications') @UseGuards(JwtAuthGuard,TenantAccessGuard,FeaturesGuard) @RequireFeatures(Feature.CORE_HR)
@@ -31,7 +31,8 @@ export class EmployeeCommunicationsAdminController {
  @Post('announcements') @RequirePermissions(Permission.MANAGE_COMMUNICATIONS) create(@CurrentTenantUser() actor: TenantJwtUser,@Body() dto: AnnouncementDto) { return this.communications.create(actor,dto); }
  @Get('announcements') @RequirePermissions(Permission.VIEW_COMMUNICATIONS) list(@CurrentTenantUser() actor: TenantJwtUser) { return this.communications.list(actor); }
  @Get('announcements/:id') @RequirePermissions(Permission.VIEW_COMMUNICATIONS) detail(@CurrentTenantUser() actor: TenantJwtUser,@Param('id') id: string) { return this.communications.detail(actor,id); }
- @Patch('announcements/:id/state') @RequirePermissions(Permission.MANAGE_COMMUNICATIONS) state(@CurrentTenantUser() actor: TenantJwtUser,@Param('id') id: string,@Body() dto: AnnouncementStateDto) { return this.communications.state(actor,id,dto.isActive); }
+ @Patch('announcements/:id/state') @RequirePermissions(Permission.APPROVE_COMMUNICATIONS) state(@CurrentTenantUser() actor: TenantJwtUser,@Param('id') id: string,@Body() dto: AnnouncementStateDto) { return this.communications.state(actor,id,dto.isActive); }
+ @Post('announcements/:id/review') @RequirePermissions(Permission.APPROVE_COMMUNICATIONS) review(@CurrentTenantUser() actor: TenantJwtUser,@Param('id') id: string,@Body() dto: AnnouncementReviewDto) { return this.communications.review(actor,id,dto.status,dto.reason); }
  @Post('announcements/:id/attachments') @RequirePermissions(Permission.MANAGE_COMMUNICATIONS) @UseInterceptors(FileInterceptor('file',{ limits: { fileSize: 10*1024*1024, files: 1 } })) attach(@CurrentTenantUser() actor: TenantJwtUser,@Param('id') id: string,@UploadedFile() file: Express.Multer.File) { return this.communications.attach(actor,id,file); }
  @Get('announcements/:id/attachments/:attachmentId') @RequirePermissions(Permission.VIEW_COMMUNICATIONS) async attachment(@CurrentTenantUser() actor: TenantJwtUser,@Param('id') id: string,@Param('attachmentId') attachmentId: string,@Res() res: Response) { const { attachment, bytes } = await this.communications.download(actor,id,attachmentId,true); send(res,attachment.name,attachment.mimeType,bytes); }
 }

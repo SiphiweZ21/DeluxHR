@@ -16,6 +16,7 @@ class ConfigureServiceDto {
 @UseGuards(JwtAuthGuard, TenantAccessGuard)
 export class WorkspaceAccessController {
   constructor(private readonly service: WorkspaceAccessService) {}
+  @Get('approvals') approvals(@CurrentTenantUser() actor: TenantJwtUser) { return this.service.approvals(actor); }
   @Get('current') current(@CurrentTenantUser() actor: TenantJwtUser) {
     return this.service.current(actor);
   }

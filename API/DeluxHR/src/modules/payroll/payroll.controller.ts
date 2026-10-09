@@ -1,3 +1,4 @@
+import { AccessControlService } from '../../common/access/access-control.service';
 import { PermissionsGuard } from '../../common/access/permissions.guard';
 import { RequirePermissions } from '../../common/access/require-permissions.decorator';
 import { FeaturesGuard } from '../../common/entitlements/features.guard';
@@ -25,7 +26,7 @@ import { UpdatePayrollRunStatusDto } from './dto/update-payroll-run-status.dto';
 @RequirePermissions(Permission.VIEW_PAYROLL)
 @Controller('payroll-runs')
 export class PayrollController {
-  constructor(private readonly payrollService: PayrollService) {}
+  constructor(private readonly payrollService: PayrollService, private readonly access: AccessControlService) {}
 
   @Post()
   @RequirePermissions(Permission.MANAGE_PAYROLL)
@@ -64,12 +65,14 @@ export class PayrollController {
   }
 
   @Patch(':id/status')
-  @RequirePermissions(Permission.MANAGE_PAYROLL)
-  updateStatus(
+  @RequirePermissions(Permission.VIEW_PAYROLL)
+  async updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdatePayrollRunStatusDto,
     @CurrentTenantUser() user: TenantJwtUser,
   ) {
+    const required = dto.status === 'APPROVED' || dto.status === 'LOCKED' ? Permission.APPROVE_PAYROLL : dto.status === 'REVIEWED' ? Permission.REVIEW_PAYROLL : dto.status === 'PAYMENT_PROCESSING' ? Permission.PREPARE_PAYROLL_PAYMENTS : dto.status === 'PAID' ? Permission.CONFIRM_PAYROLL_PAYMENTS : Permission.MANAGE_PAYROLL;
+    await this.access.requirePermission(user, required);
     return this.payrollService.updateStatus(
       user.organizationId,
       id,

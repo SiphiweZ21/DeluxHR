@@ -22,6 +22,6 @@ export class LeaveRequestsController {
  list(@CurrentTenantUser() user: TenantJwtUser) { return this.service.list(user); }
  @Get(':leaveRequestId')
  one(@Param('leaveRequestId') id: string,@CurrentTenantUser() user: TenantJwtUser) { return this.service.findOne(user.organizationId,id,user); }
- @Patch(':leaveRequestId/status') @RequirePermissions(Permission.MANAGE_LEAVE)
+ @Patch(':leaveRequestId/status') @RequirePermissions(Permission.APPROVE_LEAVE)
  status(@Param('leaveRequestId') id: string,@Body() dto: UpdateLeaveStatusDto,@CurrentTenantUser() user: TenantJwtUser) { return this.service.updateStatus(user,id,dto.status); }
 }

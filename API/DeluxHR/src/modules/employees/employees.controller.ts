@@ -1,3 +1,4 @@
+import { ReviewProfileChangeDto } from './dto/review-profile-change.dto';
 import { BatchApproveEmployeesDto } from './dto/batch-approve-employees.dto';
 import {
   Body,
@@ -32,6 +33,11 @@ import { EmployeeLifecycleReasonDto } from './dto/employee-lifecycle-reason.dto'
 @Controller('employees')
 export class EmployeesController {
   constructor(private readonly employeesService: EmployeesService) {}
+
+  @Get('profile-changes') @RequirePermissions(Permission.VIEW_EMPLOYEES)
+  profileChanges(@CurrentTenantUser() user: TenantJwtUser) { return this.employeesService.profileChanges(user.organizationId); }
+  @Post('profile-changes/:id/review') @RequirePermissions(Permission.APPROVE_EMPLOYEES)
+  reviewProfileChange(@CurrentTenantUser() user: TenantJwtUser, @Param('id') id: string, @Body() dto: ReviewProfileChangeDto) { return this.employeesService.reviewProfileChange(user,id,dto.status,dto.reason); }
 
   @Post()
   @RequirePermissions(Permission.ADD_EMPLOYEES)

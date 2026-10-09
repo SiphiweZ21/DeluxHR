@@ -621,8 +621,8 @@ export class PayrollBatchesService {
       where: { organizationId },
       select: { approvalMode: true },
     });
-    if (settings?.approvalMode === 'MAKER_CHECKER') {
-      if (batch.generationStartedByUserId === actor.sub) {
+    {
+      if (batch.createdByUserId === actor.sub || batch.generationStartedByUserId === actor.sub) {
         throw new BadRequestException(
           'Maker-checker is enabled. The user who generated this payroll cycle cannot approve it.',
         );

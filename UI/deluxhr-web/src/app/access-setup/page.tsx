@@ -30,8 +30,8 @@ const roles: Array<{
   },
   {
     value: "HR_ADMIN",
-    label: "HR Admin (Human Resources & Training)",
-    description: "Manages people and HR operations.",
+    label: "HR / Workforce Administrator",
+    description: "Use department presets below for HR, Office Administrator or Operations access.",
   },
   {
     value: "PAYROLL_ADMIN",

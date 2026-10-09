@@ -1,10 +1,219 @@
 export const navGroups = [
- {label:'Overview',items:[{label:'Dashboard',href:'/dashboard',icon:'grid'},{label:'CEO Dashboard',href:'/ceo-dashboard',icon:'chart'},{label:'Workforce Reports',href:'/workforce-reports',icon:'chart'}]},
- {label:'People',items:[{label:'Employees',href:'/employees',icon:'users'},{label:'Departments',href:'/departments',icon:'building'},{label:'HR Service Desk',href:'/hr-service-desk',icon:'document'},{label:'Communications',href:'/communications',icon:'users'}]},
- {label:'Time & Attendance',items:[{label:'Attendance',href:'/attendance',icon:'clock'},{label:'Shifts & Schedules',href:'/shifts',icon:'calendar'},{label:'Attendance Exceptions',href:'/attendance-exceptions',icon:'history'},{label:'Timesheets',href:'/timesheets',icon:'sheet'}]},
- {label:'Leave',items:[{label:'Leave Requests',href:'/leave-requests',icon:'calendar'},{label:'Leave Approvals',href:'/leave-approvals',icon:'calendar'},{label:'Leave Types',href:'/leave-types',icon:'tag'},{label:'Leave Policies',href:'/leave-policies',icon:'sheet'}]},
- {label:'Payroll & Payments',items:[{label:'Payroll Setup',href:'/payroll-setup',icon:'payroll'},{label:'Earnings',href:'/earnings',icon:'wallet'},{label:'Payroll Runs',href:'/payroll-runs',icon:'payroll'},{label:'Early Pay Repayments',href:'/early-pay-repayments',icon:'wallet'},{label:'Payment Batches',href:'/payroll-payments',icon:'wallet'},{label:'Remittance Preparation',href:'/remittance-payments',icon:'wallet'},{label:'Liabilities & Remittances',href:'/payroll-liabilities',icon:'wallet'},{label:'Payslips',href:'/payslips',icon:'document'},{label:'Early Pay',href:'/early-pay',icon:'wallet'}]},
- {label:'Company & Access',items:[{label:'Services',href:'/company-services',icon:'grid'},{label:'Banking & Payments',href:'/company-banking',icon:'wallet'},{label:'Remittance Beneficiaries',href:'/remittance-beneficiaries',icon:'wallet'},{label:'Company Setup',href:'/onboarding',icon:'building'},{label:'Company Profile',href:'/company-profile',icon:'building'},{label:'Users & Access',href:'/access-setup',icon:'users'},{label:'Audit Logs',href:'/audit-logs',icon:'history'}]},
+  {
+    "label": "Dashboard",
+    "items": [
+      {
+        "label": "Dashboard",
+        "href": "/dashboard",
+        "icon": "grid"
+      },
+      {
+        "label": "Executive Dashboard",
+        "href": "/ceo-dashboard",
+        "icon": "chart"
+      }
+    ]
+  },
+  {
+    "label": "HR & Employees",
+    "items": [
+      {
+        "label": "Employee Details",
+        "href": "/employees",
+        "icon": "users"
+      },
+      {
+        "label": "Departments & Positions",
+        "href": "/departments",
+        "icon": "building"
+      },
+      {
+        "label": "HR Requests",
+        "href": "/hr-service-desk",
+        "icon": "document"
+      }
+    ]
+  },
+  {
+    "label": "Attendance & Timesheets",
+    "items": [
+      {
+        "label": "Attendance",
+        "href": "/attendance",
+        "icon": "clock"
+      },
+      {
+        "label": "Shifts & Schedules",
+        "href": "/shifts",
+        "icon": "calendar"
+      },
+      {
+        "label": "Attendance Exceptions",
+        "href": "/attendance-exceptions",
+        "icon": "history"
+      },
+      {
+        "label": "Timesheets",
+        "href": "/timesheets",
+        "icon": "sheet"
+      }
+    ]
+  },
+  {
+    "label": "Leave",
+    "items": [
+      {
+        "label": "Leave Requests & Balances",
+        "href": "/leave-requests",
+        "icon": "calendar"
+      },
+      {
+        "label": "Leave Approvals",
+        "href": "/leave-approvals",
+        "icon": "calendar"
+      },
+      {
+        "label": "Leave Types",
+        "href": "/leave-types",
+        "icon": "tag"
+      },
+      {
+        "label": "Leave Policies",
+        "href": "/leave-policies",
+        "icon": "sheet"
+      }
+    ]
+  },
+  {
+    "label": "Payroll",
+    "items": [
+      {
+        "label": "Payroll Settings",
+        "href": "/payroll-setup",
+        "icon": "payroll"
+      },
+      {
+        "label": "Earnings",
+        "href": "/earnings",
+        "icon": "wallet"
+      },
+      {
+        "label": "Payroll Runs & Approvals",
+        "href": "/payroll-runs",
+        "icon": "payroll"
+      },
+      {
+        "label": "Payroll Payment Files",
+        "href": "/payroll-payments",
+        "icon": "wallet"
+      },
+      {
+        "label": "Remittance Payments",
+        "href": "/remittance-payments",
+        "icon": "wallet"
+      },
+      {
+        "label": "Liabilities & Remittances",
+        "href": "/payroll-liabilities",
+        "icon": "wallet"
+      }
+    ]
+  },
+  {
+    "label": "Payslips",
+    "items": [
+      {
+        "label": "Payslips",
+        "href": "/payslips",
+        "icon": "document"
+      }
+    ]
+  },
+  {
+    "label": "Banking Details",
+    "items": [
+      {
+        "label": "Employee Banking Details",
+        "href": "/employee-banking",
+        "icon": "wallet"
+      }
+    ]
+  },
+  {
+    "label": "Early Pay",
+    "items": [
+      {
+        "label": "Early Pay Requests & Approvals",
+        "href": "/early-pay",
+        "icon": "wallet"
+      },
+      {
+        "label": "Early Pay Repayments",
+        "href": "/early-pay-repayments",
+        "icon": "wallet"
+      }
+    ]
+  },
+  {
+    "label": "Announcements",
+    "items": [
+      {
+        "label": "Announcements",
+        "href": "/communications",
+        "icon": "document"
+      }
+    ]
+  },
+  {
+    "label": "Reports",
+    "items": [
+      {
+        "label": "Workforce Reports",
+        "href": "/workforce-reports",
+        "icon": "chart"
+      }
+    ]
+  },
+  {
+    "label": "Company Settings",
+    "items": [
+      {
+        "label": "Company Services & Package",
+        "href": "/company-services",
+        "icon": "grid"
+      },
+      {
+        "label": "Company Banking & Payments",
+        "href": "/company-banking",
+        "icon": "wallet"
+      },
+      {
+        "label": "Remittance Beneficiaries",
+        "href": "/remittance-beneficiaries",
+        "icon": "wallet"
+      },
+      {
+        "label": "Company Setup",
+        "href": "/onboarding",
+        "icon": "building"
+      },
+      {
+        "label": "Company Details",
+        "href": "/company-profile",
+        "icon": "building"
+      },
+      {
+        "label": "Users & Permissions",
+        "href": "/access-setup",
+        "icon": "users"
+      },
+      {
+        "label": "Audit History",
+        "href": "/audit-logs",
+        "icon": "history"
+      }
+    ]
+  }
 ];
 
 export function NavIcon({ name }: { name: string }) {
