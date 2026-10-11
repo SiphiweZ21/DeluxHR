@@ -1,3 +1,4 @@
+import { buildWhatsAppMenu, validMenuId, type EssReply, type MenuCategory } from './whatsapp-menu';
 import {
   BadRequestException,
   ConflictException,
@@ -55,8 +56,6 @@ type Flow = {
 export function normalizedPhone(value: string) {
   return value.replace(/\D/g, '');
 }
-const MENU =
-  'DeluxHR menu: 1 Profile, 2 Leave balance, 3 Request leave, 4 Leave status, 5 Attendance, 6 Clock in, 7 Clock out, 8 Explain exception, 9 Payslip, 10 HR request, 11 HR status, 12 Announcements, 13 Early Pay. Reply 0 for menu.';
 @Injectable()
 export class WhatsAppEssService {
   private readonly logger = new Logger('WhatsAppProcessing');
@@ -186,7 +185,14 @@ export class WhatsAppEssService {
       const reply = await this.handle(phone, body.trim(), messageId, location);
       this.logger.log('WA_REPLY_PREPARED');
       stage = 'SEND';
-      await this.whatsapp.sendTextMessage(from, reply);
+      if (typeof reply === 'string') await this.whatsapp.sendTextMessage(from, reply);
+      else {
+        try { await this.whatsapp.sendInteractiveList(from, reply.interactive); }
+        catch {
+          this.logger.warn('WA_MENU_TEXT_FALLBACK');
+          await this.whatsapp.sendTextMessage(from, reply.fallback);
+        }
+      }
       this.logger.log('WA_REPLY_ACCEPTED_BY_META');
       stage = 'COMPLETE';
       await this.prisma.whatsAppInboundMessage.update({
@@ -207,7 +213,7 @@ export class WhatsAppEssService {
     text: string,
     messageId: string,
     location?: SharedLocation,
-  ): Promise<string> {
+  ): Promise<EssReply> {
     const employees = await this.prisma.employee.findMany({
       where: {
         status: EmployeeStatus.ACTIVE,
@@ -296,13 +302,19 @@ export class WhatsAppEssService {
         },
       });
       await this.auditAction(actor, employee.id, 'WHATSAPP_ESS_VERIFIED');
-      return MENU;
+      return this.menu(actor.organizationId);
     }
-    if (/^PIN\s/i.test(text)) return 'Already verified. Reply 0 for the menu.';
-    const flow = session.flow as Flow | null;
+    if (/^PIN\s/i.test(text)) return this.menu(actor.organizationId);
+    let flow = session.flow as Flow | null;
+    if (validMenuId(text)) {
+      await this.setFlow(session.id, null);
+      flow = null;
+      if (text.startsWith('WA_MENU_')) return this.menu(actor.organizationId, text.slice(8) as MenuCategory);
+      text = text.slice(10);
+    }
     if (text.toLowerCase() === '0' || text.toLowerCase() === 'menu') {
       await this.setFlow(session.id, null);
-      return MENU;
+      return this.menu(actor.organizationId);
     }
     if (flow?.kind === 'CLOCK_LOCATION')
       return this.captureLocation(
@@ -384,6 +396,7 @@ export class WhatsAppEssService {
         return `To ${eventType === AttendanceEventType.CHECK_IN ? 'clock in' : 'clock out'}, use WhatsApp Attach (+ / paperclip) > Location > Send your current location within 5 minutes. Reply 0 to cancel. Attendance is only recorded after you share a valid location.`;
       }
       case '8': {
+        if (!(await this.entitlements.hasFeature(org, Feature.ATTENDANCE))) return 'Attendance is not enabled for your company.';
         const exception = await this.prisma.attendanceException.findFirst({
           where: {
             organizationId: org,
@@ -452,7 +465,7 @@ export class WhatsAppEssService {
         return `Early Pay available up to R${quote.availableAmount.toFixed(2)}. Reply AMOUNT STANDARD or AMOUNT INSTANT (for example 100 STANDARD).`;
       }
       default:
-        return MENU;
+        return this.menu(actor.organizationId);
     }
   }
   private async captureLocation(
@@ -462,7 +475,7 @@ export class WhatsAppEssService {
     flow: Flow,
     location: SharedLocation | undefined,
     messageId: string,
-  ): Promise<string> {
+  ): Promise<EssReply> {
     const org = employee.organizationId,
       now = new Date();
     const requestedAt = new Date(flow.requestedAt ?? '').getTime();
@@ -578,7 +591,7 @@ export class WhatsAppEssService {
     sessionId: string,
     flow: Flow,
     text: string,
-  ): Promise<string> {
+  ): Promise<EssReply> {
     const org = employee.organizationId,
       id = employee.id;
     if (flow.kind === 'LEAVE_TYPE' || flow.kind === 'BALANCE_TYPE') {
@@ -714,7 +727,12 @@ export class WhatsAppEssService {
       return `Early Pay request ${request.id} submitted for approval.`;
     }
     await this.setFlow(sessionId, null);
-    return MENU;
+    return this.menu(actor.organizationId);
+  }
+  private async menu(organizationId: string, category: MenuCategory = 'HOME') {
+    const features = [Feature.CORE_HR, Feature.LEAVE, Feature.ATTENDANCE, Feature.PAYSLIPS, Feature.EARLY_PAY];
+    const checks = await Promise.all(features.map(async feature => ({ feature, enabled: await this.entitlements.hasFeature(organizationId, feature) })));
+    return buildWhatsAppMenu(new Set(checks.filter(c => c.enabled).map(c => c.feature)), category);
   }
   async redeemPayslip(token: string) {
     if (!/^[A-Za-z0-9_-]{30,100}$/.test(token))

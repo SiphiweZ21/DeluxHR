@@ -1,3 +1,4 @@
+import type { WhatsAppList } from '../whatsapp-ess/whatsapp-menu';
 import {
   Injectable,
   Logger,
@@ -92,6 +93,10 @@ export class WhatsAppService {
       payload,
       'Failed to send WhatsApp message',
     );
+  }
+
+  async sendInteractiveList(to: string, interactive: WhatsAppList) {
+    return this.sendWhatsAppPayload({ messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'interactive', interactive }, 'Failed to send WhatsApp menu');
   }
 
   async handleIncomingMessage(from: string, text: string) {

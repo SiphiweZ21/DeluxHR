@@ -1,3 +1,4 @@
+import { validMenuId } from './whatsapp-menu';
 import {
   Body,
   Controller,
@@ -119,6 +120,8 @@ export class WhatsAppEssController {
           : []) {
           if (message.type === 'text' && typeof message.text?.body === 'string')
             await this.ess.process(message.id, message.from, message.text.body);
+          else if (message.type === 'interactive' && message.interactive?.type === 'list_reply' && validMenuId(message.interactive.list_reply?.id))
+            await this.ess.process(message.id, message.from, message.interactive.list_reply.id);
           else if (message.type === 'location')
             await this.ess.process(message.id, message.from, '[location]', {
               latitude: message.location?.latitude,
