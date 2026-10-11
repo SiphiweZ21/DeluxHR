@@ -38,6 +38,11 @@ export default function LoginPage() {
             </div>
 
             <LoginForm />
+            <p className="mt-6 text-center text-sm text-slate-500">
+              <a href="/privacy-policy" className="underline">Privacy Policy</a>
+              {" · "}
+              <a href="/data-deletion" className="underline">Data deletion</a>
+            </p>
           </div>
         </div>
       </div>

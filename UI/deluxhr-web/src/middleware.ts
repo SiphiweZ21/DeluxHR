@@ -7,6 +7,8 @@ const publicRoutes = new Set([
   "/register",
   "/forgot-password",
   "/reset-password",
+  "/privacy-policy",
+  "/data-deletion",
 ]);
 
 export function middleware(request: NextRequest) {

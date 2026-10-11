@@ -10,6 +10,8 @@ const authRoutes = [
   "/register",
   "/forgot-password",
   "/reset-password",
+  "/privacy-policy",
+  "/data-deletion",
 ];
 export function RootShell({ children }: { children: ReactNode }) {
   const pathname = usePathname(),
