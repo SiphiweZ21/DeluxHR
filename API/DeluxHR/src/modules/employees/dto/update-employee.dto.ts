@@ -13,7 +13,7 @@ import {
 
 export class UpdateEmployeeDto {
   @IsOptional() @IsString() employeeCode?: string | null;
-  @IsOptional() @IsUUID() positionId?: string;
+  @IsOptional() @IsUUID() positionId?: string | null;
   @IsOptional()
   @IsUUID()
   departmentId?: string;

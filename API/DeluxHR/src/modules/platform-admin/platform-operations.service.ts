@@ -48,7 +48,7 @@ export class PlatformOperationsService {
     await tx.organizationFeature.upsert({ where: { organizationId_feature: { organizationId: orgId, feature } }, create: { organizationId: orgId, feature, enabled, ...(enabled ? { enabledAt: new Date() } : {}), disabledAt: enabled ? null : new Date() }, update: { enabled, ...(enabled ? { enabledAt: new Date(), disabledAt: null } : { disabledAt: new Date() }) } });
    }
    await this.log(tx,orgId,actor,'PLATFORM_SUBSCRIPTION_CHANGED','PlatformSubscription',sub.id,dto.reason,{ previousPackageId: existing?.packageId ?? null, packageId: pack.id, previousStatus: existing?.status ?? null, status: dto.status });
-   return sub;
+   return { ...sub, package: pack };
   });
  }
  async getSubscription(orgId: string) { await this.org(orgId); return this.db.platformSubscription.findUnique({ where: { organizationId: orgId }, include: { package: true } }); }

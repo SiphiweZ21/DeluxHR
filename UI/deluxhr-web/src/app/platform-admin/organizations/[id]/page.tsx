@@ -17,7 +17,7 @@ function Entitlements({org}:{org:api.PlatformOrganization}){
  return <><Notice error={action.error} message={action.message}/>
  <Card title="Core HR included"><p>Core HR is available by default. Choose an optional edition to add services.</p></Card>
  {!loaded?<Card title="Load subscription"><p>{action.busy?'Loading package and access settings…':'Settings could not be loaded.'}</p><button className={secondary} disabled={action.busy} onClick={()=>void action.run(load)}>Retry loading</button></Card>:<>
- <Card title="Optional services"><p>{subscription?`Current package: ${subscription.package.name} · ${subscription.status}`:'Core HR only — no additional edition selected.'}</p>
+ <Card title="Optional services"><p>{subscription?`Current package: ${subscription.package?.name??packages.find(p=>p.id===subscription.packageId)?.name??'Selected edition'} · ${subscription.status}`:'Core HR only — no additional edition selected.'}</p>
 
  {!activePackages.length&&<p className="mt-3">No active packages are available. <a className="underline" href="/platform-admin/packages">Create or enable a package</a>, then return here and refresh.</p>}
  <form key={subscription?.id??'new'} className="space-y-4 mt-4" onSubmit={e=>{e.preventDefault();if(action.busy)return;const d=new FormData(e.currentTarget);void action.run(async()=>{

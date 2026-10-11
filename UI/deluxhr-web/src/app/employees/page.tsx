@@ -48,6 +48,7 @@ export default function EmployeesPage() {
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [message, setMessage] = useState("");
+  const [changesRevision, setChangesRevision] = useState(0);
   const [approvalResults, setApprovalResults] = useState<
     { id: string; approved: boolean; message?: string }[]
   >([]);
@@ -101,13 +102,14 @@ export default function EmployeesPage() {
       const data = {
         ...payload,
         jobTitle: position?.name,
-        positionId: form.positionId || undefined,
+        positionId: form.positionId || (editing ? null : undefined),
         employmentStartDate: form.employmentStartDate || undefined,
         ...(!form.identityNumber ? { identityNumber: undefined } : {}),
       };
-      if (editing)
-        await workforceRequest(`employees/${editing}`, "PATCH", data);
-      else await createEmployee(data);
+      const result = editing
+        ? await workforceRequest<Employee & { pendingChangeId?: string; approvalMessage?: string }>(`employees/${editing}`, "PATCH", data)
+        : await createEmployee({ ...data, positionId: form.positionId || undefined });
+      setChangesRevision(value => value + 1);
       setForm({
         ...blank,
         departmentId: form.departmentId,
@@ -117,7 +119,9 @@ export default function EmployeesPage() {
       await load();
       setMessage(
         editing
-          ? "Employee changes submitted for approval where required. Review the pending changes queue."
+          ? ('pendingChangeId' in result && result.pendingChangeId
+              ? "Changes awaiting approval. Existing details remain in use until another authorised HR or Executive Leadership user approves them in the queue below."
+              : "Employee details updated.")
           : "Employee saved as pending. Add another employee or view pending approvals.",
       );
     } catch (e) {
@@ -408,7 +412,7 @@ export default function EmployeesPage() {
           </p>
         ))}
       </section>
-      <EmployeeChangeQueue/>
+      <EmployeeChangeQueue revision={changesRevision} onReviewed={load}/>
       {formOpen && (editing ? allowed("MANAGE_EMPLOYEES") : allowed("ADD_EMPLOYEES")) && (
       <section id="employee-form" className="scroll-mt-28 rounded-xl border bg-white p-6">
           <h2 className="text-xl font-semibold">

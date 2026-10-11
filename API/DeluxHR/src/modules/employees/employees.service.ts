@@ -535,7 +535,7 @@ export class EmployeesService {
     }
     const effectiveDepartment =
       dto.departmentId ?? existingEmployee.departmentId;
-    const effectivePosition = dto.positionId ?? existingEmployee.positionId;
+    const effectivePosition = dto.positionId !== undefined ? dto.positionId : existingEmployee.positionId;
     let selectedPosition: { id: string; name: string } | null = null;
     if (
       effectivePosition &&
@@ -635,7 +635,7 @@ export class EmployeesService {
         ? new Date(dto.employmentEndDate)
         : existingEmployee.employmentEndDate;
     this.validateEmploymentDates(employmentStartDate, employmentEndDate);
-    const data: Prisma.EmployeeUpdateInput = {};
+    const data: Prisma.EmployeeUncheckedUpdateInput = {};
     const changedFields: string[] = [];
     if (dto.employeeCode !== undefined) {
       const code = normalizeEmployeeCode(dto.employeeCode);
@@ -706,23 +706,16 @@ export class EmployeesService {
       dto.departmentId !== undefined &&
       dto.departmentId !== existingEmployee.departmentId
     ) {
-      data.department = {
-        connect: {
-          id: dto.departmentId,
-        },
-      };
+      data.departmentId = dto.departmentId;
       changedFields.push('departmentId');
     }
+    if (dto.positionId === null) {
+      data.positionId = null;
+      data.jobTitle = null;
+      changedFields.push('positionId', 'jobTitle');
+    }
     if (dto.positionId !== undefined && selectedPosition) {
-      data.position = {
-        connect: {
-          organizationId_departmentId_id: {
-            organizationId,
-            departmentId: effectiveDepartment,
-            id: selectedPosition.id,
-          },
-        },
-      };
+      data.positionId = selectedPosition.id;
       data.jobTitle = selectedPosition.name;
       changedFields.push('positionId', 'jobTitle');
     }
