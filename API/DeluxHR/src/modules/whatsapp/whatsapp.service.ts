@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
@@ -22,6 +23,7 @@ type LeaveConversationState = {
 
 @Injectable()
 export class WhatsAppService {
+  private readonly logger = new Logger('WhatsAppSender');
   private readonly baseUrl = `https://graph.facebook.com/${process.env.WHATSAPP_API_VERSION}/${process.env.WHATSAPP_PHONE_NUMBER_ID}`;
 
   private readonly leaveSessions = new Map<string, LeaveConversationState>();
@@ -763,7 +765,10 @@ Reply with *1, 2, 3 or 4*.`,
     payload: unknown,
     fallbackMessage: string,
   ) {
-    const response = await fetch(
+    this.logger.log('WA_SEND_STARTED');
+    let response: Response;
+    try {
+      response = await fetch(
       `${this.baseUrl}/messages`,
       {
         method: 'POST',
@@ -775,14 +780,27 @@ Reply with *1, 2, 3 or 4*.`,
       },
     );
 
-    const data = await response.json();
+    } catch (error) {
+      this.logger.error('WA_SEND_NETWORK_FAILED');
+      throw error;
+    }
+    let data: any;
+    try { data = await response.json(); }
+    catch (error) {
+      this.logger.error(`WA_SEND_INVALID_RESPONSE httpStatus=${response.status}`);
+      throw error;
+    }
 
     if (!response.ok) {
+      const code = typeof data?.error?.code === 'number' ? data.error.code : 'unknown';
+      const subcode = typeof data?.error?.error_subcode === 'number' ? data.error.error_subcode : 'none';
+      this.logger.error(`WA_SEND_REJECTED httpStatus=${response.status} code=${code} subcode=${subcode}`);
       throw new InternalServerErrorException(
         data?.error?.message ?? fallbackMessage,
       );
     }
 
+    this.logger.log(`WA_SEND_ACCEPTED httpStatus=${response.status}`);
     return data;
   }
 

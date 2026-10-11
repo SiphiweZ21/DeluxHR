@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -58,6 +59,7 @@ const MENU =
   'DeluxHR menu: 1 Profile, 2 Leave balance, 3 Request leave, 4 Leave status, 5 Attendance, 6 Clock in, 7 Clock out, 8 Explain exception, 9 Payslip, 10 HR request, 11 HR status, 12 Announcements, 13 Early Pay. Reply 0 for menu.';
 @Injectable()
 export class WhatsAppEssService {
+  private readonly logger = new Logger('WhatsAppProcessing');
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -152,11 +154,18 @@ export class WhatsAppEssService {
     location?: SharedLocation,
   ) {
     const phone = normalizedPhone(from);
-    if (!messageId || !phone || !body || body.length > 2000) return;
+    if (!messageId || !phone || !body || body.length > 2000) {
+      this.logger.warn('WA_INPUT_IGNORED invalid=true');
+      return;
+    }
+    this.logger.log('WA_PROCESS_STARTED');
     const recent = await this.prisma.whatsAppInboundMessage.count({
       where: { phone, receivedAt: { gte: new Date(Date.now() - 10 * 60000) } },
     });
-    if (recent >= 30) return;
+    if (recent >= 30) {
+      this.logger.warn('WA_RATE_LIMITED');
+      return;
+    }
     try {
       await this.prisma.whatsAppInboundMessage.create({
         data: { providerMessageId: messageId, phone },
@@ -165,18 +174,27 @@ export class WhatsAppEssService {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
-      )
+      ) {
+        this.logger.log('WA_DUPLICATE_IGNORED');
         return;
+      }
+      this.logger.error('WA_INBOUND_RECORD_FAILED');
       throw error;
     }
+    let stage = 'HANDLE';
     try {
       const reply = await this.handle(phone, body.trim(), messageId, location);
+      this.logger.log('WA_REPLY_PREPARED');
+      stage = 'SEND';
       await this.whatsapp.sendTextMessage(from, reply);
+      this.logger.log('WA_REPLY_ACCEPTED_BY_META');
+      stage = 'COMPLETE';
       await this.prisma.whatsAppInboundMessage.update({
         where: { providerMessageId: messageId },
         data: { status: 'COMPLETED', completedAt: new Date() },
       });
     } catch (error) {
+      this.logger.error(`WA_PROCESS_FAILED stage=${stage}`);
       await this.prisma.whatsAppInboundMessage.update({
         where: { providerMessageId: messageId },
         data: { status: 'FAILED', completedAt: new Date() },
@@ -199,8 +217,10 @@ export class WhatsAppEssService {
       include: { user: true, whatsappEssIdentity: true },
       take: 2,
     });
-    if (employees.length !== 1 || !employees[0].whatsappEssIdentity?.isActive)
+    if (employees.length !== 1 || !employees[0].whatsappEssIdentity?.isActive) {
+      this.logger.log('WA_EMPLOYEE_NOT_ENROLLED');
       return 'Your WhatsApp self-service is not set up. Contact HR.';
+    }
     const employee = employees[0],
       identity = employee.whatsappEssIdentity!,
       actor = this.actor(employee);
@@ -209,8 +229,10 @@ export class WhatsAppEssService {
         employee.organizationId,
         Feature.WHATSAPP,
       ))
-    )
+    ) {
+      this.logger.log('WA_COMPANY_FEATURE_DISABLED');
       return 'WhatsApp self-service is not enabled for your company.';
+    }
     await this.prisma.whatsAppInboundMessage.update({
       where: { providerMessageId: messageId },
       data: {

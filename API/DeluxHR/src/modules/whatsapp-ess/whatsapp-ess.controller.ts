@@ -5,6 +5,7 @@ import {
   Get,
   Headers,
   HttpCode,
+  Logger,
   Param,
   Patch,
   Post,
@@ -46,7 +47,11 @@ export function validWebhookSignature(
 }
 @Controller('whatsapp')
 export class WhatsAppEssController {
+  private readonly logger = new Logger('WhatsAppWebhook');
   constructor(private readonly ess: WhatsAppEssService) {}
+  onModuleInit() {
+    this.logger.log(`WA_DIAG_READY secretConfigured=${Boolean(process.env.WHATSAPP_APP_SECRET)} phoneIdConfigured=${Boolean(process.env.WHATSAPP_PHONE_NUMBER_ID)} tokenConfigured=${Boolean(process.env.WHATSAPP_TOKEN)} apiVersionConfigured=${Boolean(process.env.WHATSAPP_API_VERSION)}`);
+  }
   @Get('webhook')
   verify(
     @Query('hub.mode') mode: string,
@@ -76,6 +81,7 @@ export class WhatsAppEssController {
     @Req() req: Request & { rawBody?: Buffer },
     @Headers('x-hub-signature-256') signature: string,
   ) {
+    this.logger.log(`WA_WEBHOOK_RECEIVED rawBodyPresent=${Boolean(req.rawBody)} signaturePresent=${Boolean(signature)}`);
     if (
       !req.rawBody ||
       !validWebhookSignature(
@@ -84,7 +90,11 @@ export class WhatsAppEssController {
         process.env.WHATSAPP_APP_SECRET,
       )
     )
+    {
+      this.logger.warn('WA_SIGNATURE_REJECTED');
       throw new ForbiddenException('Invalid webhook signature');
+    }
+    this.logger.log('WA_SIGNATURE_ACCEPTED');
     const entries = Array.isArray(req.body?.entry) ? req.body.entry : [];
     for (const entry of entries)
       for (const change of Array.isArray(entry.changes) ? entry.changes : []) {
@@ -92,8 +102,18 @@ export class WhatsAppEssController {
         if (
           value?.metadata?.phone_number_id !==
           process.env.WHATSAPP_PHONE_NUMBER_ID
-        )
+        ) {
+          this.logger.warn('WA_PHONE_ID_MISMATCH ignored=true');
           continue;
+        }
+        const messageCount = Array.isArray(value.messages) ? value.messages.length : 0;
+        const statusCount = Array.isArray(value.statuses) ? value.statuses.length : 0;
+        this.logger.log(`WA_PHONE_ID_MATCH messages=${messageCount} statuses=${statusCount}`);
+        for (const status of Array.isArray(value.statuses) ? value.statuses : []) {
+          const state = ['sent', 'delivered', 'read', 'failed'].includes(status.status) ? status.status : 'other';
+          const codes = (Array.isArray(status.errors) ? status.errors : []).map((error: { code?: unknown }) => typeof error.code === 'number' ? error.code : 'unknown').join(',');
+          this.logger.log(`WA_DELIVERY_STATUS status=${state} errorCodes=${codes || 'none'}`);
+        }
         for (const message of Array.isArray(value.messages)
           ? value.messages
           : []) {
@@ -104,6 +124,7 @@ export class WhatsAppEssController {
               latitude: message.location?.latitude,
               longitude: message.location?.longitude,
             });
+          else this.logger.log('WA_MESSAGE_TYPE_IGNORED');
         }
       }
     return { received: true };
