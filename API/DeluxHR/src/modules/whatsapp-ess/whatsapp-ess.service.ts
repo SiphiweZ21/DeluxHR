@@ -217,7 +217,7 @@ export class WhatsAppEssService {
       include: { user: true, whatsappEssIdentity: true },
       take: 2,
     });
-    if (employees.length !== 1 || !employees[0].whatsappEssIdentity?.isActive) {
+    if (employees.length !== 1 || !employees[0].whatsappEssIdentity?.isActive || !employees[0].user?.isActive || employees[0].user.organizationId !== employees[0].organizationId) {
       this.logger.log('WA_EMPLOYEE_NOT_ENROLLED');
       return 'Your WhatsApp self-service is not set up. Contact HR.';
     }

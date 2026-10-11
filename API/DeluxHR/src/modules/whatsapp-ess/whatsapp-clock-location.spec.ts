@@ -15,7 +15,7 @@ function setup(flow: any = null, latest: any = null) {
         {
           id: 'employee',
           organizationId: 'org',
-          user: { id: 'user', email: 'e@test', role: 'EMPLOYEE' },
+          user: { id: 'user', email: 'e@test', role: 'EMPLOYEE', isActive: true, organizationId: 'org' },
           whatsappEssIdentity: { isActive: true },
         },
       ]),

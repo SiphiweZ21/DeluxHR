@@ -24,6 +24,7 @@ import {
   LeaveSetup,
   OpeningLeave,
 } from "../../components/onboarding/leave-setup";
+import { WhatsAppEmployeeSetup } from "../../components/whatsapp-employee-setup";
 import { EmployeeSetup } from "../../components/onboarding/employee-setup";
 import { CompanyBanking } from "../../components/banking/company-banking";
 import {
@@ -304,6 +305,7 @@ export default function Page() {
         </div>
         <div className={tab === tabs[4] ? "space-y-6" : "hidden"}>
           <EmployeeSetup />
+          <WhatsAppEmployeeSetup />
         </div>
         <div className={tab === tabs[5] ? "space-y-6" : "hidden"}>
           <OpeningLeave />

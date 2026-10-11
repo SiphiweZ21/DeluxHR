@@ -1,3 +1,5 @@
+import { WhatsAppSetupController } from './whatsapp-setup.controller';
+import { WhatsAppSetupService } from './whatsapp-setup.service';
 import { Module } from '@nestjs/common';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { PayslipsModule } from '../payslips/payslips.module';
@@ -10,5 +12,5 @@ import { HrServiceDeskModule } from '../hr-service-desk/hr-service-desk.module';
 import { AuditModule } from '../audit/audit.module';
 import { WhatsAppEssController } from './whatsapp-ess.controller';
 import { WhatsAppEssService } from './whatsapp-ess.service';
-@Module({ imports: [WhatsAppModule,PayslipsModule,LeaveRequestsModule,LeavePolicyModule,AttendanceEventsModule,EarlyPayModule,AuditModule,HrServiceDeskModule,EmployeeCommunicationsModule], controllers: [WhatsAppEssController], providers: [WhatsAppEssService] })
+@Module({ imports: [WhatsAppModule,PayslipsModule,LeaveRequestsModule,LeavePolicyModule,AttendanceEventsModule,EarlyPayModule,AuditModule,HrServiceDeskModule,EmployeeCommunicationsModule], controllers: [WhatsAppEssController, WhatsAppSetupController], providers: [WhatsAppEssService, WhatsAppSetupService] })
 export class WhatsAppEssModule {}

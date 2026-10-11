@@ -1,4 +1,5 @@
 "use client";
+import { WhatsAppEmployeeSetup } from "../../components/whatsapp-employee-setup";
 import { EmployeeChangeQueue } from '../../components/employee-change-queue';
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
@@ -413,6 +414,7 @@ export default function EmployeesPage() {
         ))}
       </section>
       <EmployeeChangeQueue revision={changesRevision} onReviewed={load}/>
+      {allowed("MANAGE_USERS") && access?.features.includes("WHATSAPP") && <WhatsAppEmployeeSetup />}
       {formOpen && (editing ? allowed("MANAGE_EMPLOYEES") : allowed("ADD_EMPLOYEES")) && (
       <section id="employee-form" className="scroll-mt-28 rounded-xl border bg-white p-6">
           <h2 className="text-xl font-semibold">
