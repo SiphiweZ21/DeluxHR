@@ -22,6 +22,9 @@ type LeaveConversationState = {
   startDate?: string;
 };
 
+export class WhatsAppMessageRejected extends InternalServerErrorException {
+  constructor(message: string, readonly httpStatus: number) { super(message); }
+}
 @Injectable()
 export class WhatsAppService {
   private readonly logger = new Logger('WhatsAppSender');
@@ -800,8 +803,8 @@ Reply with *1, 2, 3 or 4*.`,
       const code = typeof data?.error?.code === 'number' ? data.error.code : 'unknown';
       const subcode = typeof data?.error?.error_subcode === 'number' ? data.error.error_subcode : 'none';
       this.logger.error(`WA_SEND_REJECTED httpStatus=${response.status} code=${code} subcode=${subcode}`);
-      throw new InternalServerErrorException(
-        data?.error?.message ?? fallbackMessage,
+      throw new WhatsAppMessageRejected(
+        data?.error?.message ?? fallbackMessage, response.status,
       );
     }
 

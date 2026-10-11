@@ -32,6 +32,14 @@ import {
   EnrolWhatsAppDto,
   UpdateHrRequestDto,
 } from './dto/whatsapp-ess.dto';
+// Provider timestamps prevent old queued commands from appearing to auto-run later.
+// Legacy payloads without timestamps retain message-ID deduplication.
+export function freshWhatsAppMessage(timestamp: unknown, now = Date.now()): boolean {
+  if (timestamp === undefined) return true;
+  if (typeof timestamp !== 'string' || !/^\d{10,13}$/.test(timestamp)) return false;
+  const age = now - Number(timestamp) * 1000;
+  return age >= -120000 && age <= 10 * 60000;
+}
 export function validWebhookSignature(
   raw: Buffer,
   supplied: string | undefined,
@@ -118,6 +126,10 @@ export class WhatsAppEssController {
         for (const message of Array.isArray(value.messages)
           ? value.messages
           : []) {
+          if (!freshWhatsAppMessage(message.timestamp)) {
+            this.logger.log('WA_STALE_MESSAGE_IGNORED');
+            continue;
+          }
           if (message.type === 'text' && typeof message.text?.body === 'string')
             await this.ess.process(message.id, message.from, message.text.body);
           else if (message.type === 'interactive' && message.interactive?.type === 'list_reply' && validMenuId(message.interactive.list_reply?.id))

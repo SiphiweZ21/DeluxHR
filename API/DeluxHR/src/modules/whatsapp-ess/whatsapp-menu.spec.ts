@@ -3,7 +3,10 @@ import { createHmac } from 'crypto';
 import { buildWhatsAppMenu, validMenuId, MenuCategory } from './whatsapp-menu';
 import { WhatsAppEssService } from './whatsapp-ess.service';
 import { WhatsAppEssController } from './whatsapp-ess.controller';
-import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import {
+  WhatsAppService,
+  WhatsAppMessageRejected,
+} from '../whatsapp/whatsapp.service';
 import { hashPassword } from '../../common/auth/password';
 const features = new Set([
   Feature.CORE_HR,
@@ -179,7 +182,9 @@ describe('WhatsApp interactive menu', () => {
   });
   it('uses a readable numbered fallback on interactive failure', async () => {
     const x = fixture();
-    x.sender.sendInteractiveList.mockRejectedValue(new Error('provider'));
+    x.sender.sendInteractiveList.mockRejectedValue(
+      new WhatsAppMessageRejected('provider', 400),
+    );
     await x.process('WA_MENU_ATTENDANCE');
     expect(x.sender.sendTextMessage.mock.calls[0][1]).toContain(
       '*Attendance*\n6. Clock in\n7. Clock out',
@@ -187,7 +192,9 @@ describe('WhatsApp interactive menu', () => {
   });
   it('records a failure if both send attempts fail', async () => {
     const x = fixture();
-    x.sender.sendInteractiveList.mockRejectedValue(new Error('provider'));
+    x.sender.sendInteractiveList.mockRejectedValue(
+      new WhatsAppMessageRejected('provider', 400),
+    );
     x.sender.sendTextMessage.mockRejectedValue(new Error('provider'));
     await expect(x.process('hi')).rejects.toThrow('provider');
     expect(x.db.whatsAppInboundMessage.update).toHaveBeenLastCalledWith(

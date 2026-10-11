@@ -22,7 +22,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EntitlementsService } from '../../common/entitlements/entitlements.service';
 import { hashPassword, comparePassword } from '../../common/auth/password';
-import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { WhatsAppService, WhatsAppMessageRejected } from '../whatsapp/whatsapp.service';
 import { LeaveRequestsService } from '../leave/leave-requests/leave-requests.service';
 import { LeavePolicyService } from '../leave/leave-policy/leave-policy.service';
 import { AttendanceEventsService } from '../attendance-events/attendance-events.service';
@@ -158,6 +158,7 @@ export class WhatsAppEssService {
       return;
     }
     this.logger.log('WA_PROCESS_STARTED');
+    this.logger.log(`WA_INBOUND_REF ref=${createHash('sha256').update(messageId).digest('hex').slice(0, 12)}`);
     const recent = await this.prisma.whatsAppInboundMessage.count({
       where: { phone, receivedAt: { gte: new Date(Date.now() - 10 * 60000) } },
     });
@@ -188,7 +189,8 @@ export class WhatsAppEssService {
       if (typeof reply === 'string') await this.whatsapp.sendTextMessage(from, reply);
       else {
         try { await this.whatsapp.sendInteractiveList(from, reply.interactive); }
-        catch {
+        catch (error) {
+          if (!(error instanceof WhatsAppMessageRejected) || ![400, 422].includes(error.httpStatus)) throw error;
           this.logger.warn('WA_MENU_TEXT_FALLBACK');
           await this.whatsapp.sendTextMessage(from, reply.fallback);
         }
