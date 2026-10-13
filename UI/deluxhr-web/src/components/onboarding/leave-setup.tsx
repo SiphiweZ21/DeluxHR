@@ -1,8 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useState, useContext } from "react";
 import { Card } from "../leave/ui";
 import * as api from "../../lib/customer-onboarding-api";
 import {
+  SetupContext,
   SetupForm,
   KnownId,
   useSetup,
@@ -18,7 +19,7 @@ export function ConfirmStep({
   step: api.ConfirmationStep;
   title: string;
 }) {
-  const setup = useSetup();
+  const setup = useContext(SetupContext);
   return (
     <SetupForm
       title={title}
@@ -34,7 +35,7 @@ export function ConfirmStep({
       confirm={`Confirm ${title.toLowerCase()} has been reviewed for this company?`}
       save={async (d) => {
         await api.setupConfirm(step, string(d, "note") || undefined);
-        await refreshed(setup.refresh);
+        if (setup) await refreshed(setup.refresh);
       }}
     />
   );

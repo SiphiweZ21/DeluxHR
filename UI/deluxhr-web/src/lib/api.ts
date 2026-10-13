@@ -283,6 +283,7 @@ export type PayrollLedgerEntry = {
 };
 
 export type PayrollRun = {
+  payrollBatchId?: string | null;
   id: string;
   organizationId: string;
   employeeId: string;

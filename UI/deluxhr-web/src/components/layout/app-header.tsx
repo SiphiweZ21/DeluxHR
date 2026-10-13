@@ -7,6 +7,12 @@ import { getUser } from '../../lib/auth';
 
 const titles: Record<string, string> = {
   '/dashboard': 'Dashboard',
+  '/employee-administration':'Employee Administration',
+  '/department-setup':'Department & Position Setup',
+  '/attendance-setup':'Locations & Shifts',
+  '/leave-setup':'Leave Settings & Balances',
+  '/company-documents':'Company Documents',
+  '/pay-changes':'Pay Changes & Increases',
   '/remittance-payments':'Remittance Preparation', '/remittance-beneficiaries':'Remittance Beneficiaries', '/early-pay-repayments':'Early Pay Repayments', '/payroll-payments': 'Payroll Payment Batches',
   '/company-banking': 'Banking & Payments',
   '/company-services': 'Company Services',

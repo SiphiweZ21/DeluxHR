@@ -31,12 +31,27 @@ export const navGroups = [
         "label": "HR Requests",
         "href": "/hr-service-desk",
         "icon": "document"
+      },
+      {
+        "label": "Import, verification & documents",
+        "href": "/employee-administration",
+        "icon": "users"
+      },
+      {
+        "label": "Department & position setup",
+        "href": "/department-setup",
+        "icon": "building"
       }
     ]
   },
   {
     "label": "Attendance & Timesheets",
     "items": [
+      {
+        "label": "Locations & shift setup",
+        "href": "/attendance-setup",
+        "icon": "clock"
+      },
       {
         "label": "Attendance",
         "href": "/attendance",
@@ -63,6 +78,11 @@ export const navGroups = [
     "label": "Leave",
     "items": [
       {
+        "label": "Settings, holidays & opening balances",
+        "href": "/leave-setup",
+        "icon": "calendar"
+      },
+      {
         "label": "Leave Requests & Balances",
         "href": "/leave-requests",
         "icon": "calendar"
@@ -88,9 +108,14 @@ export const navGroups = [
     "label": "Payroll",
     "items": [
       {
-        "label": "Payroll Settings",
+        "label": "Employee Pay, Benefits & Settings",
         "href": "/payroll-setup",
         "icon": "payroll"
+      },
+      {
+        "label": "Pay Changes & Increases",
+        "href": "/pay-changes",
+        "icon": "wallet"
       },
       {
         "label": "Earnings",
@@ -116,26 +141,26 @@ export const navGroups = [
         "label": "Liabilities & Remittances",
         "href": "/payroll-liabilities",
         "icon": "wallet"
-      }
-    ]
-  },
-  {
-    "label": "Payslips",
-    "items": [
-      {
-        "label": "Payslips",
-        "href": "/payslips",
-        "icon": "document"
-      }
-    ]
-  },
-  {
-    "label": "Banking Details",
-    "items": [
+      },
       {
         "label": "Employee Banking Details",
         "href": "/employee-banking",
         "icon": "wallet"
+      },
+      {
+        "label": "Company Banking & Payments",
+        "href": "/company-banking",
+        "icon": "wallet"
+      },
+      {
+        "label": "Remittance Beneficiaries",
+        "href": "/remittance-beneficiaries",
+        "icon": "wallet"
+      },
+      {
+        "label": "Payslips",
+        "href": "/payslips",
+        "icon": "document"
       }
     ]
   },
@@ -183,16 +208,6 @@ export const navGroups = [
         "icon": "grid"
       },
       {
-        "label": "Company Banking & Payments",
-        "href": "/company-banking",
-        "icon": "wallet"
-      },
-      {
-        "label": "Remittance Beneficiaries",
-        "href": "/remittance-beneficiaries",
-        "icon": "wallet"
-      },
-      {
         "label": "Company Setup",
         "href": "/onboarding",
         "icon": "building"
@@ -211,6 +226,11 @@ export const navGroups = [
         "label": "Audit History",
         "href": "/audit-logs",
         "icon": "history"
+      },
+      {
+        "label": "Company Documents",
+        "href": "/company-documents",
+        "icon": "document"
       }
     ]
   }

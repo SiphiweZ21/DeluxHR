@@ -1,3 +1,8 @@
+import { Permission } from '@prisma/client';
+import { PermissionsGuard } from '../../common/access/permissions.guard';
+import { RequirePermissions } from '../../common/access/require-permissions.decorator';
+import { AllowFeatureSetup } from '../../common/entitlements/allow-feature-setup.decorator';
+import { AllowPendingOnboarding } from '../../common/auth/allow-pending-onboarding.decorator';
 import { FeaturesGuard } from '../../common/entitlements/features.guard';
 import { RequireFeatures } from '../../common/entitlements/require-features.decorator';
 import { Feature } from '@prisma/client';
@@ -24,15 +29,19 @@ import {
   UpdatePayrollSettingsDto,
   UpsertPayrollProfileDto,
 } from './dto/payroll-configuration.dto';
-@UseGuards(JwtAuthGuard, TenantAccessGuard, FeaturesGuard)
+@UseGuards(JwtAuthGuard, TenantAccessGuard, FeaturesGuard, PermissionsGuard)
 @RequireFeatures(Feature.PAYROLL)
+@RequirePermissions(Permission.VIEW_PAYROLL)
+@AllowFeatureSetup()
+@AllowPendingOnboarding()
 @Controller('payroll-configuration')
 export class PayrollConfigurationController {
   constructor(private s: PayrollConfigurationService) {}
   @Get('settings') settings(@CurrentTenantUser() u: TenantJwtUser) {
     return this.s.settings(u.organizationId);
   }
-  @Patch('settings') update(
+  @Patch('settings')
+  @RequirePermissions(Permission.MANAGE_PAYROLL) update(
     @Body() d: UpdatePayrollSettingsDto,
     @CurrentTenantUser() u: TenantJwtUser,
   ) {
@@ -47,7 +56,8 @@ export class PayrollConfigurationController {
   ) {
     return this.s.profile(u.organizationId, e);
   }
-  @Patch('profiles/:employeeId') upsert(
+  @Patch('profiles/:employeeId')
+  @RequirePermissions(Permission.MANAGE_PAYROLL) upsert(
     @Param('employeeId') e: string,
     @Body() d: UpsertPayrollProfileDto,
     @CurrentTenantUser() u: TenantJwtUser,
@@ -57,20 +67,23 @@ export class PayrollConfigurationController {
   @Get('benefits') benefits(@CurrentTenantUser() u: TenantJwtUser) {
     return this.s.benefits(u.organizationId);
   }
-  @Post('benefits') createBenefit(
+  @Post('benefits')
+  @RequirePermissions(Permission.MANAGE_PAYROLL) createBenefit(
     @Body() d: CreateBenefitPlanDto,
     @CurrentTenantUser() u: TenantJwtUser,
   ) {
     return this.s.createBenefit(u.organizationId, d);
   }
-  @Post('profiles/:employeeId/benefits') assignBenefit(
+  @Post('profiles/:employeeId/benefits')
+  @RequirePermissions(Permission.MANAGE_PAYROLL) assignBenefit(
     @Param('employeeId') e: string,
     @Body() d: AssignBenefitDto,
     @CurrentTenantUser() u: TenantJwtUser,
   ) {
     return this.s.assignBenefit(u.organizationId, e, d);
   }
-  @Delete('employee-benefits/:id') removeBenefit(
+  @Delete('employee-benefits/:id')
+  @RequirePermissions(Permission.MANAGE_PAYROLL) removeBenefit(
     @Param('id') id: string,
     @CurrentTenantUser() u: TenantJwtUser,
   ) {
@@ -79,20 +92,23 @@ export class PayrollConfigurationController {
   @Get('deductions') deductions(@CurrentTenantUser() u: TenantJwtUser) {
     return this.s.deductions(u.organizationId);
   }
-  @Post('deductions') createDeduction(
+  @Post('deductions')
+  @RequirePermissions(Permission.MANAGE_PAYROLL) createDeduction(
     @Body() d: CreateDeductionDefinitionDto,
     @CurrentTenantUser() u: TenantJwtUser,
   ) {
     return this.s.createDeduction(u.organizationId, d);
   }
-  @Post('profiles/:employeeId/deductions') assignDeduction(
+  @Post('profiles/:employeeId/deductions')
+  @RequirePermissions(Permission.MANAGE_PAYROLL) assignDeduction(
     @Param('employeeId') e: string,
     @Body() d: AssignDeductionDto,
     @CurrentTenantUser() u: TenantJwtUser,
   ) {
     return this.s.assignDeduction(u.organizationId, e, d);
   }
-  @Delete('employee-deductions/:id') removeDeduction(
+  @Delete('employee-deductions/:id')
+  @RequirePermissions(Permission.MANAGE_PAYROLL) removeDeduction(
     @Param('id') id: string,
     @CurrentTenantUser() u: TenantJwtUser,
   ) {

@@ -8,7 +8,10 @@ export function routeAllowed(a:WorkspaceAccess,href:string){
  switch(href){
  case '/dashboard':return f('CORE_HR');
  case '/remittance-beneficiaries':case '/company-services':case '/company-banking':return company;
- case '/onboarding':return company;
+ case '/onboarding':case '/employee-administration':case '/department-setup':case '/company-documents':return company;
+ case '/attendance-setup':return company&&a.services.some(s=>s.feature==='ATTENDANCE'&&s.included);
+ case '/leave-setup':return company&&a.services.some(s=>s.feature==='LEAVE'&&s.included);
+ case '/pay-changes':return f('PAYROLL')&&p('VIEW_PAYROLL');
  case '/company-profile':return f('CORE_HR')&&p('MANAGE_COMPANY');
  case '/access-setup':return f('CORE_HR')&&p('MANAGE_USERS')&&p('MANAGE_ACCESS');
  case '/employee-banking':return f('PAYROLL')&&p('VIEW_EMPLOYEE_PAYMENT_DETAILS');
@@ -29,4 +32,4 @@ export function routeAllowed(a:WorkspaceAccess,href:string){
  default:return false;
  }
 }
-export function routeRoot(path:string){const routes=['/employee-banking','/remittance-beneficiaries','/remittance-payments','/early-pay-repayments','/payroll-payments','/company-banking','/onboarding','/company-profile','/access-setup','/company-services','/dashboard','/employees','/departments','/leave-requests','/leave-types','/leave-policies','/leave-approvals','/attendance','/shifts','/attendance-exceptions','/timesheets','/earnings','/payroll-runs','/payroll-setup','/payroll-liabilities','/payslips','/early-pay','/hr-service-desk','/communications','/ceo-dashboard','/workforce-reports','/audit-logs'];return routes.find(r=>path===r||path.startsWith(r+'/'));}
+export function routeRoot(path:string){const routes=['/employee-administration','/department-setup','/company-documents','/attendance-setup','/leave-setup','/pay-changes','/employee-banking','/remittance-beneficiaries','/remittance-payments','/early-pay-repayments','/payroll-payments','/company-banking','/onboarding','/company-profile','/access-setup','/company-services','/dashboard','/employees','/departments','/leave-requests','/leave-types','/leave-policies','/leave-approvals','/attendance','/shifts','/attendance-exceptions','/timesheets','/earnings','/payroll-runs','/payroll-setup','/payroll-liabilities','/payslips','/early-pay','/hr-service-desk','/communications','/ceo-dashboard','/workforce-reports','/audit-logs'];return routes.find(r=>path===r||path.startsWith(r+'/'));}

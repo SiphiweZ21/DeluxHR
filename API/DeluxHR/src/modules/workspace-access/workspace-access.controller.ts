@@ -1,3 +1,4 @@
+import {AllowPendingOnboarding} from '../../common/auth/allow-pending-onboarding.decorator';
 import { Body, Controller, Get, Param, Put, UseGuards } from '@nestjs/common';
 import { Feature, Permission } from '@prisma/client';
 import { IsBoolean, IsString, MaxLength, MinLength } from 'class-validator';
@@ -17,7 +18,9 @@ class ConfigureServiceDto {
 export class WorkspaceAccessController {
   constructor(private readonly service: WorkspaceAccessService) {}
   @Get('approvals') approvals(@CurrentTenantUser() actor: TenantJwtUser) { return this.service.approvals(actor); }
-  @Get('current') current(@CurrentTenantUser() actor: TenantJwtUser) {
+  @Get('current')
+  @AllowPendingOnboarding()
+  current(@CurrentTenantUser() actor: TenantJwtUser) {
     return this.service.current(actor);
   }
   @Put('services/:feature')

@@ -214,7 +214,7 @@ export function CompanySetup() {
     </>
   );
 }
-export function StructureSetup() {
+export function StructureSetup({mode = "all"}: {mode?: "all" | "departments" | "attendance"}) {
   const setup = useSetup();
   const review = useAction();
   const [created, setCreated] = useState<api.SetupOption[]>([]);
@@ -228,6 +228,7 @@ export function StructureSetup() {
   };
   return (
     <>
+      {mode !== "attendance" && <>
       <Card title="Suggested Executive Leadership structure">
         <p className="text-sm">
           Use Executive Leadership for senior leadership, separate from
@@ -378,7 +379,8 @@ export function StructureSetup() {
           </div>
         ))}
       </Card>
-      <details className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+      </>}
+      {mode !== "departments" && <details open className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
         <summary className="cursor-pointer font-semibold">
           Attendance setup: work locations & shifts
         </summary>
@@ -536,7 +538,7 @@ export function StructureSetup() {
             }}
           />
         </div>
-      </details>
+      </details>}
       {!!created.length && (
         <Card title="Created in this setup session">
           <ul className="space-y-3">

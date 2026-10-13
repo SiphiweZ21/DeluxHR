@@ -523,6 +523,10 @@ export class PayrollBatchesService {
       },
     });
     await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${organizationId + '|salary-payroll'}))`;
+      const currentCycle = await tx.payrollBatch.findFirst({where:{id:batch.id,organizationId},include:{_count:{select:{payrollRuns:true}}}});
+      if (!currentCycle || currentCycle.status !== 'CALCULATED' || currentCycle._count.payrollRuns !== batch._count.payrollRuns) throw new ConflictException('Payroll cycle changed while it was being reviewed. Refresh and check the employee runs again.');
+
       await tx.payrollBatch.update({
         where: { id: batch.id },
         data: {
@@ -627,11 +631,6 @@ export class PayrollBatchesService {
           'Maker-checker is enabled. The user who generated this payroll cycle cannot approve it.',
         );
       }
-      if (batch.reviewedByUserId === actor.sub) {
-        throw new BadRequestException(
-          'Maker-checker is enabled. The user who reviewed this payroll cycle cannot approve it.',
-        );
-      }
     }
     const reviewState = await this.getReview(organizationId, payrollBatchId);
     if (reviewState.employeeSummary.generating > 0) {
@@ -661,6 +660,10 @@ export class PayrollBatchesService {
     }
     const approvedAt = new Date();
     await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${organizationId + '|salary-payroll'}))`;
+      const currentCycle = await tx.payrollBatch.findFirst({where:{id:batch.id,organizationId},include:{_count:{select:{payrollRuns:true}}}});
+      if (!currentCycle || currentCycle.status !== 'REVIEWED' || currentCycle._count.payrollRuns !== batch._count.payrollRuns) throw new ConflictException('Payroll cycle changed while it was being reviewed. Refresh and check the employee runs again.');
+
       await tx.payrollBatch.update({
         where: { id: batch.id },
         data: {
@@ -759,6 +762,10 @@ export class PayrollBatchesService {
     const reviewState = await this.getReview(organizationId, payrollBatchId);
     const lockedAt = new Date();
     await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${organizationId + '|salary-payroll'}))`;
+      const currentCycle = await tx.payrollBatch.findFirst({where:{id:batch.id,organizationId},include:{_count:{select:{payrollRuns:true}}}});
+      if (!currentCycle || currentCycle.status !== 'APPROVED' || currentCycle._count.payrollRuns !== batch.payrollRuns.length) throw new ConflictException('Payroll cycle changed while it was being reviewed. Refresh and check the employee runs again.');
+
       const batchUpdate = await tx.payrollBatch.updateMany({
         where: {
           id: batch.id,

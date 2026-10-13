@@ -1,3 +1,4 @@
+import {GenerateSalaryPayrollDto} from './dto/generate-salary-payroll.dto';
 import { AccessControlService } from '../../common/access/access-control.service';
 import { PermissionsGuard } from '../../common/access/permissions.guard';
 import { RequirePermissions } from '../../common/access/require-permissions.decorator';
@@ -93,6 +94,10 @@ export class PayrollController {
       user.sub,
     );
   }
+
+  @Post('generate-salary')
+  @RequirePermissions(Permission.MANAGE_PAYROLL)
+  generateSalary(@Body() dto:GenerateSalaryPayrollDto,@CurrentTenantUser() user:TenantJwtUser){return this.payrollService.generateFromSalary(user.organizationId,dto,user.sub);}
 
   @Post('generate')
   @RequirePermissions(Permission.MANAGE_PAYROLL)

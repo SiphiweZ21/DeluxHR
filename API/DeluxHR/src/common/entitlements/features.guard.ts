@@ -1,3 +1,4 @@
+import { ALLOW_FEATURE_SETUP } from './allow-feature-setup.decorator';
 import {
   CanActivate,
   ExecutionContext,
@@ -49,6 +50,7 @@ export class FeaturesGuard implements CanActivate {
       );
     }
 
+    if (this.reflector.getAllAndOverride<boolean>(ALLOW_FEATURE_SETUP, [context.getHandler(),context.getClass()]) === true) return true;
     const missing = await this.entitlementsService.incompleteSetup(
       user.organizationId,
       requiredFeatures,
@@ -58,7 +60,7 @@ export class FeaturesGuard implements CanActivate {
         statusCode: 403,
         code: 'MODULE_SETUP_REQUIRED',
         message:
-          'This service is selected, but its setup is not complete. Please ask your company administrator to complete it in Company Setup.',
+          `Complete the missing setup before continuing: ${missing.map(key => ({registration:'company registration and tax number',payrollSettings:'Payroll settings',workLocations:'Attendance work locations',shifts:'Attendance shifts',leaveTypes:'Leave types',leavePolicies:'Leave policies',publicHolidays:'public holiday review',openingLeave:'opening leave review'}[key] ?? key)).join(', ')}. Open the relevant feature settings or ask your company administrator.`,
         setupSteps: missing,
       });
     return true;

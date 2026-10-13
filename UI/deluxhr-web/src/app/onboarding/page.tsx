@@ -1,8 +1,6 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getDepartments, getEmployees, getLeaveTypes } from "../../lib/api";
-import { getLeavePolicies } from "../../lib/leave-api";
 import * as api from "../../lib/customer-onboarding-api";
 import type { TenantReadiness } from "../../lib/platform-api";
 import { logout } from "../../lib/auth";
@@ -16,34 +14,9 @@ import {
   useAction,
 } from "../../components/leave/ui";
 import { SetupContext, type Choices } from "../../components/onboarding/common";
-import {
-  CompanySetup,
-  StructureSetup,
-} from "../../components/onboarding/company-setup";
-import {
-  LeaveSetup,
-  OpeningLeave,
-} from "../../components/onboarding/leave-setup";
-import { WhatsAppEmployeeSetup } from "../../components/whatsapp-employee-setup";
-import {AttendanceReview} from "../../components/attendance/review";
-import { EmployeeSetup } from "../../components/onboarding/employee-setup";
-import { CompanyBanking } from "../../components/banking/company-banking";
-import {
-  CompanyDocumentsSetup,
-  EmployeeDocumentsSetup,
-} from "../../components/onboarding/employee-documents";
-import { PayrollSetup } from "../../components/onboarding/payroll-setup";
-const tabs = [
-  "Readiness",
-  "Company & administrators",
-  "Departments, locations & shifts",
-  "Leave & holidays",
-  "Employee import & verification",
-  "Opening leave",
-  "Payroll & bank details",
-  "Company banking & payments",
-  "Company & employee documents",
-];
+import {CompanySetup} from "../../components/onboarding/company-setup";
+const tabs = ["Readiness", "Company & administrators"];
+const setupLinks = [{label:"Departments & positions",href:"/department-setup"},{label:"Locations & shifts",href:"/attendance-setup"},{label:"Leave, holidays & opening balances",href:"/leave-setup"},{label:"Employee import, verification & documents",href:"/employee-administration"},{label:"Employee pay, benefits & deductions",href:"/payroll-setup"},{label:"Employee banking & approvals",href:"/employee-banking"},{label:"Company banking & payments",href:"/company-banking"},{label:"Company documents",href:"/company-documents"}];
 const empty: Choices = {
   positions: [],
   departments: [],
@@ -217,13 +190,6 @@ export default function Page() {
             </button>
           ))}
         </nav>
-        {tab === tabs[7] && <CompanyBanking />}
-        {tab === tabs[8] && (
-          <div className="space-y-6">
-            <CompanyDocumentsSetup />
-            <EmployeeDocumentsSetup />
-          </div>
-        )}
         <div className={tab === tabs[0] ? "space-y-6" : "hidden"}>
           {ready && (
             <>
@@ -274,9 +240,7 @@ export default function Page() {
                 </p>
                 <p className="text-sm mt-3">
                   Opening leave/payroll review confirmations must follow the
-                  latest employee import. Payroll readiness additionally
-                  requires positive salary/rate profiles and approved payment
-                  details for all active employees.
+                  latest employee import. Payroll readiness requires at least one positive salary/rate profile and a review of the employees you intend to process. Approved banking is checked when preparing payments.
                 </p>
               </Card>
             </>
@@ -298,23 +262,7 @@ export default function Page() {
         <div className={tab === tabs[1] ? "space-y-6" : "hidden"}>
           <CompanySetup />
         </div>
-        <div className={tab === tabs[2] ? "space-y-6" : "hidden"}>
-          <StructureSetup />
-          <AttendanceReview setupOnly />
-        </div>
-        <div className={tab === tabs[3] ? "space-y-6" : "hidden"}>
-          <LeaveSetup />
-        </div>
-        <div className={tab === tabs[4] ? "space-y-6" : "hidden"}>
-          <EmployeeSetup />
-          <WhatsAppEmployeeSetup />
-        </div>
-        <div className={tab === tabs[5] ? "space-y-6" : "hidden"}>
-          <OpeningLeave />
-        </div>
-        <div className={tab === tabs[6] ? "space-y-6" : "hidden"}>
-          <PayrollSetup />
-        </div>
+        <Card title="Complete setup in each feature"><p className="mb-4 text-sm">Company Setup tracks onboarding. Manage employee pay, banking, leave and attendance in their feature workspaces.</p><div className="grid gap-3 sm:grid-cols-2">{setupLinks.map(item=><Link key={item.href} href={item.href} className={secondary}>{item.label} →</Link>)}</div></Card>
       </div>
     </SetupContext.Provider>
   );

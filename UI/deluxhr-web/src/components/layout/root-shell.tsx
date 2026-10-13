@@ -1,10 +1,13 @@
 "use client";
+import Link from 'next/link';
+import {WorkspaceAccessProvider} from './workspace-access';
 import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { AppShell } from "./app-shell";
 import { PlatformShell } from "../platform-admin/platform-shell";
 import { getUser, homeForRole, logout } from "../../lib/auth";
 import { setupIdentity } from "../../lib/customer-onboarding-api";
+const pendingSetupRoutes=["/onboarding","/onboarding/preferences","/employee-administration","/department-setup","/company-documents","/attendance-setup","/leave-setup","/payroll-setup","/employee-banking","/company-banking"];
 const authRoutes = [
   "/login",
   "/register",
@@ -50,7 +53,7 @@ export function RootShell({ children }: { children: ReactNode }) {
             current.role === "COMPANY_ADMIN" &&
             current.organization?.status === "PENDING";
           setPending(setupOnly);
-          if (setupOnly && pathname !== "/onboarding")
+          if (setupOnly && !pendingSetupRoutes.includes(pathname))
             router.replace("/onboarding");
         } catch (e) {
           if (live)
@@ -92,10 +95,10 @@ export function RootShell({ children }: { children: ReactNode }) {
       </div>
     );
   if (pending)
-    return pathname === "/onboarding" ? (
-      <main className="mx-auto max-w-[1400px] space-y-6 p-4 md:p-8">
+    return pendingSetupRoutes.includes(pathname) ? (
+      <WorkspaceAccessProvider><main className="mx-auto max-w-[1400px] space-y-6 p-4 md:p-8"><p className="rounded-xl bg-amber-50 p-3 text-sm">Company onboarding is pending. Complete setup in each feature; payroll processing starts after activation. <Link href="/onboarding" className="underline">Company Setup checklist</Link></p>
         {children}
-      </main>
+      </main></WorkspaceAccessProvider>
     ) : (
       <div className="p-8">Opening company setup…</div>
     );

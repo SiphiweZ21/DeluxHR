@@ -1,3 +1,5 @@
+import { AllowFeatureSetup } from '../../common/entitlements/allow-feature-setup.decorator';
+import { AllowPendingOnboarding } from '../../common/auth/allow-pending-onboarding.decorator';
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { Feature, Permission } from '@prisma/client';
 
@@ -17,6 +19,8 @@ import { EmployeePaymentDetailsService } from './employee-payment-details.servic
 
 @UseGuards(JwtAuthGuard, TenantAccessGuard, FeaturesGuard, PermissionsGuard)
 @RequireFeatures(Feature.PAYROLL)
+@AllowFeatureSetup()
+@AllowPendingOnboarding()
 @Controller('employees/:employeeId/payment-details')
 export class EmployeePaymentDetailsController {
   constructor(

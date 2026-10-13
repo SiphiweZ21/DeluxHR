@@ -1,3 +1,4 @@
+import { GenerateSalaryPayrollDto } from './dto/generate-salary-payroll.dto';
 import {
   BadRequestException,
   Injectable,
@@ -5,6 +6,7 @@ import {
 } from '@nestjs/common';
 
 import {
+  Earning,
   ContributionMethod,
   EmployeeStatus,
   PayrollRunStatus,
@@ -52,6 +54,7 @@ interface DeductionBreakdownItem {
 
 interface PayrollGenerationOptions {
   payrollBatchId?: string;
+  salary?: GenerateSalaryPayrollDto;
 }
 
 interface PayrollLedgerItem {
@@ -242,6 +245,7 @@ export class PayrollService {
     userId: string,
   ) {
     const current = await this.findOne(organizationId, id);
+    if (current.payrollBatchId) throw new BadRequestException('Use payroll cycle approvals for this run. Individual status changes would bypass cycle review.');
     const target = dto.status as PayrollRunStatus;
 
     const allowed: Partial<Record<PayrollRunStatus, PayrollRunStatus[]>> = {
@@ -386,6 +390,8 @@ export class PayrollService {
       id,
     );
 
+    if (current.payrollBatchId) throw new BadRequestException('This run belongs to a payroll cycle. Individual recalculation is unavailable; review the cycle instead.');
+
     if (!['DRAFT', 'CALCULATED'].includes(current.status)) {
       throw new BadRequestException(
         'Only DRAFT or CALCULATED payroll runs can be recalculated',
@@ -443,6 +449,27 @@ export class PayrollService {
     );
   }
 
+  async generateFromSalary(organizationId: string, dto: GenerateSalaryPayrollDto, userId: string) {
+    const periodStart = new Date(dto.payPeriodStart), periodEnd = new Date(dto.payPeriodEnd);
+    if (!Number.isFinite(periodStart.getTime()) || !Number.isFinite(periodEnd.getTime()) || periodEnd < periodStart) throw new BadRequestException('Enter a valid payroll period.');
+    if ((dto.taxableAllowance || dto.additionalDeduction) && !dto.adjustmentReason?.trim()) throw new BadRequestException('Enter a reason for payroll adjustments.');
+    return this.prisma.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${organizationId + '|salary-payroll'}))`;
+      const existing = await tx.payrollRun.findFirst({where:{organizationId,employeeId:dto.employeeId,status:{not:'CANCELLED'},payPeriodStart:{lte:periodEnd},payPeriodEnd:{gte:periodStart}}});
+      if (existing) throw new BadRequestException('This employee already has a payroll run overlapping this period. Review that run instead of generating another.');
+      let batch = await tx.payrollBatch.findUnique({where:{organizationId_payPeriodStart_payPeriodEnd:{organizationId,payPeriodStart:periodStart,payPeriodEnd:periodEnd}}});
+      if (batch && (!['DRAFT','CALCULATED'].includes(batch.status) || (batch.generationStartedByUserId && batch.generationStartedByUserId !== userId))) throw new BadRequestException('This payroll cycle is already under review or belongs to another payroll maker.');
+      if (batch && batch.currency !== 'ZAR') throw new BadRequestException('Salary payroll requires a ZAR payroll cycle.');
+      if (batch?.paymentDate && dto.paymentDate && batch.paymentDate.getTime() !== new Date(dto.paymentDate).getTime()) throw new BadRequestException('Use the payment date already selected for this payroll cycle.');
+      if (!batch) batch = await tx.payrollBatch.create({data:{organizationId,payPeriodStart:periodStart,payPeriodEnd:periodEnd,paymentDate:dto.paymentDate?new Date(dto.paymentDate):periodEnd,title:dto.title ?? 'Selected employee salary payroll',createdByUserId:userId}});
+      const calculator = new PayrollService(tx as unknown as PrismaService, this.taxEngine);
+      const run = await calculator.generateFromEarnings(organizationId,{...dto,paymentDate:batch.paymentDate?.toISOString()},userId,{payrollBatchId:batch.id,salary:dto});
+      await tx.payrollBatchEmployee.create({data:{organizationId,payrollBatchId:batch.id,employeeId:dto.employeeId,payrollRunId:run.id,eligibilityStatus:'READY',processingStatus:'GENERATED',generatedAt:new Date()}});
+      await tx.payrollBatch.update({where:{id:batch.id},data:{status:'CALCULATED',generationStartedByUserId:userId,generationStartedAt:new Date(),calculatedAt:new Date()}});
+      return run;
+    },{timeout:30000});
+  }
+
   async generateFromEarnings(
     organizationId: string,
 
@@ -457,8 +484,8 @@ export class PayrollService {
 
     const paymentDate = dto.paymentDate ? new Date(dto.paymentDate) : periodEnd;
 
-    const [earnings, employee, settings] = await Promise.all([
-      this.prisma.earning.findMany({
+    let [earnings, employee, settings] = await Promise.all([
+      options.salary ? Promise.resolve([] as Earning[]) : this.prisma.earning.findMany({
         where: {
           organizationId,
 
@@ -532,6 +559,13 @@ export class PayrollService {
       );
     }
 
+    if (options.salary) {
+      if (!(employee.payrollProfile.basicSalary > 0)) throw new BadRequestException('Set a positive basic salary in Payroll → Employee Pay. Hourly-only employees need an earnings-based run.');
+      const now = new Date();
+      const salary = options.salary;
+      earnings = [{id:employee.payrollProfile.id,organizationId,employeeId:dto.employeeId,payrollRunId:null,title:'Basic salary',type:'SALARY',source:'SALARY_PROFILE',payPeriodStart:periodStart,payPeriodEnd:periodEnd,earnedDate:paymentDate,units:null,rate:null,amount:employee.payrollProfile.basicSalary,currency:'ZAR',status:'APPROVED',createdAt:now,updatedAt:now}];
+      if (salary.taxableAllowance) earnings.push({...earnings[0],title:salary.adjustmentReason?.trim() || 'Taxable allowance',type:'ALLOWANCE',amount:salary.taxableAllowance});
+    }
     if (earnings.length === 0) {
       throw new NotFoundException('No approved earnings found for this period');
     }
@@ -685,9 +719,10 @@ export class PayrollService {
       });
     }
 
-    let recurringDeductions = 0;
+    let recurringDeductions = options.salary?.additionalDeduction ?? 0;
 
     const deductionBreakdown: DeductionBreakdownItem[] = [];
+    if (options.salary?.additionalDeduction) deductionBreakdown.push({id:'SALARY_ADJUSTMENT',definitionId:'SALARY_ADJUSTMENT',name:options.salary.adjustmentReason?.trim() || 'Additional deduction',creditorName:null,amount:options.salary.additionalDeduction});
 
     for (const item of profile.deductions) {
       if (
@@ -851,6 +886,8 @@ export class PayrollService {
 
     const calculationBreakdown: Prisma.InputJsonObject = {
       engine: 'DELUXHR_SA_PAYROLL_V1',
+      source: options.salary ? 'SALARY_PROFILE' : 'APPROVED_EARNINGS',
+      adjustmentReason: options.salary?.adjustmentReason ?? null,
 
       taxYear: tax.taxYear,
 
@@ -1005,11 +1042,11 @@ export class PayrollService {
 
         changedByUserId: userId,
 
-        note: 'Payroll calculated from approved earnings',
+        note: options.salary ? 'Payroll calculated from salary profile; no timesheet required' : 'Payroll calculated from approved earnings',
       },
     });
 
-    await this.prisma.earning.updateMany({
+    if (!options.salary) await this.prisma.earning.updateMany({
       where: {
         id: {
           in: earnings.map((earning) => earning.id),
@@ -1098,7 +1135,7 @@ export class PayrollService {
 
         amount: earning.amount,
 
-        sourceType: 'EARNING',
+        sourceType: options.salary ? 'SALARY_PROFILE' : 'EARNING',
 
         sourceId: earning.id,
 

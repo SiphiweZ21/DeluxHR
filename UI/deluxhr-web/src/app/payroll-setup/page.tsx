@@ -1,5 +1,9 @@
 'use client';
 
+import Link from 'next/link';
+import {grant} from '../../lib/workspace-access';
+import {ConfirmStep} from '../../components/onboarding/leave-setup';
+import {useWorkspaceAccess} from '../../components/layout/workspace-access';
 import { FormEvent, useEffect, useState } from 'react';
 import {
   assignEmployeeBenefit,
@@ -34,6 +38,8 @@ function getErrorMessage(error: unknown) {
 }
 
 export default function PayrollSetup() {
+  const {access}=useWorkspaceAccess();
+  const canManage=!!access&&grant(access,"MANAGE_PAYROLL",true);
   const [settings, setSettings] =
     useState<PayrollSettings | null>(null);
 
@@ -122,31 +128,14 @@ export default function PayrollSetup() {
       taxNumber: String(fd.get('taxNumber') || ''),
       dateOfBirth:
         String(fd.get('dateOfBirth') || '') || undefined,
-      basicSalary: Number(
-        fd.get('basicSalary') || 0,
-      ),
-      pensionableSalary:
-        Number(
+      basicSalary: employee.payrollProfile ? undefined : Number(fd.get('basicSalary') || 0),
+      pensionableSalary: employee.payrollProfile ? undefined : Number(
           fd.get('pensionableSalary') || 0,
         ) || undefined,
-      hourlyRate:
-        Number(fd.get('hourlyRate') || 0) || undefined,
+      hourlyRate: employee.payrollProfile ? undefined : Number(fd.get('hourlyRate') || 0) || undefined,
       payFrequency: String(
         fd.get('payFrequency'),
       ) as any,
-      bankName: String(fd.get('bankName') || ''),
-      bankAccountHolder: String(
-        fd.get('bankAccountHolder') || '',
-      ),
-      bankAccountNumber: String(
-        fd.get('bankAccountNumber') || '',
-      ),
-      bankBranchCode: String(
-        fd.get('bankBranchCode') || '',
-      ),
-      bankAccountType: String(
-        fd.get('bankAccountType') || '',
-      ),
       medicalAidDependants: Number(
         fd.get('medicalAidDependants') || 0,
       ),
@@ -226,7 +215,7 @@ export default function PayrollSetup() {
       {settings && (
         <section className="rounded-2xl border border-slate-200 bg-white p-5">
           <h2 className="font-semibold text-slate-950">
-            Employer payroll settings
+            Company payroll settings
           </h2>
 
           <div className="mt-4 grid gap-4 md:grid-cols-3">
@@ -305,6 +294,7 @@ export default function PayrollSetup() {
           <button
             type="button"
             onClick={saveSettings}
+              disabled={!canManage}
             className="mt-4 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white"
           >
             Save employer settings
@@ -421,6 +411,7 @@ export default function PayrollSetup() {
 
           <button
             type="submit"
+            disabled={!canManage}
             className="mt-4 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white"
           >
             Add benefit
@@ -503,6 +494,7 @@ export default function PayrollSetup() {
 
           <button
             type="submit"
+            disabled={!canManage}
             className="mt-4 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white"
           >
             Add deduction
@@ -536,12 +528,11 @@ export default function PayrollSetup() {
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="font-semibold">
-              Employee payroll profiles
+              Employee Pay — add employees to payroll
             </h2>
 
             <p className="text-sm text-slate-500">
-              Benefits are assigned per employee; nothing
-              is assumed.
+              Select an employee to create their pay profile. Existing salary and rate changes go through Pay Changes for approval. Benefits are assigned per employee.
             </p>
           </div>
 
@@ -574,6 +565,7 @@ export default function PayrollSetup() {
           <EmployeeForm
             key={employee.id}
             employee={employee}
+            canManage={canManage}
             benefits={benefits}
             deductions={deductions}
             save={saveProfile}
@@ -648,6 +640,7 @@ export default function PayrollSetup() {
         )}
       </section>
 
+      {access?.role==='COMPANY_ADMIN'&&<ConfirmStep step="OPENING_PAYROLL" title="Opening payroll review"/>}
       <style jsx global>{`
         .input {
           width: 100%;
@@ -664,6 +657,7 @@ export default function PayrollSetup() {
 
 function EmployeeForm({
   employee,
+  canManage,
   benefits,
   deductions,
   save,
@@ -708,6 +702,7 @@ function EmployeeForm({
         onSubmit={handleSubmit}
         className="grid gap-3 md:grid-cols-3"
       >
+        <fieldset disabled={saving || !canManage} className="contents">
         <Input
           name="taxNumber"
           label="Tax number"
@@ -729,6 +724,7 @@ function EmployeeForm({
 
         <Input
           name="basicSalary"
+          readOnly={!!p}
           label="Basic salary"
           type="number"
           min="0"
@@ -740,6 +736,7 @@ function EmployeeForm({
 
         <Input
           name="pensionableSalary"
+          readOnly={!!p}
           label="Pensionable salary (optional)"
           type="number"
           min="0"
@@ -751,6 +748,7 @@ function EmployeeForm({
 
         <Input
           name="hourlyRate"
+          readOnly={!!p}
           label="Hourly rate (optional)"
           type="number"
           min="0"
@@ -785,50 +783,10 @@ function EmployeeForm({
           }
         />
 
-        <Input
-          name="bankName"
-          label="Bank"
-          defaultValue={
-            p?.bankName || ''
-          }
-        />
-
-        <Input
-          name="bankAccountHolder"
-          label="Account holder"
-          defaultValue={
-            p?.bankAccountHolder || ''
-          }
-        />
-
-        <Input
-          name="bankAccountNumber"
-          label="Account number"
-          defaultValue={
-            p?.bankAccountNumber || ''
-          }
-        />
-
-        <Input
-          name="bankBranchCode"
-          label="Branch code"
-          defaultValue={
-            p?.bankBranchCode || ''
-          }
-        />
-
-        <Input
-          name="bankAccountType"
-          label="Account type"
-          defaultValue={
-            p?.bankAccountType || ''
-          }
-        />
-
         <div className="flex items-end">
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || !canManage}
             className="w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
             {saving
@@ -836,6 +794,7 @@ function EmployeeForm({
               : 'Save payroll profile'}
           </button>
         </div>
+        </fieldset>
       </form>
 
       <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -859,6 +818,7 @@ function EmployeeForm({
           </div>
 
           <select
+            disabled={!canManage}
             onChange={(e) => {
               if (e.target.value) {
                 assignBenefit(
@@ -899,6 +859,7 @@ function EmployeeForm({
 
         <DeductionAssign
           deductions={deductions}
+          canManage={canManage}
           assigned={
             p?.deductions || []
           }
@@ -907,7 +868,7 @@ function EmployeeForm({
       </div>
 
       <div className="mt-4 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
-        Current basic salary:{' '}
+        <Link href="/pay-changes" className="text-indigo-600 underline">Request an increase or pay change</Link>{" · "}<Link href="/employee-banking" className="text-indigo-600 underline">Manage approved banking</Link><br/>Current basic salary:{' '}
         <b>
           {money(
             p?.basicSalary || 0,
@@ -926,6 +887,7 @@ function EmployeeForm({
 
 function DeductionAssign({
   deductions,
+  canManage,
   assigned,
   assign,
 }: any) {
@@ -965,7 +927,7 @@ function DeductionAssign({
         )}
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-2">
+      <fieldset disabled={!canManage} className="mt-3 grid grid-cols-3 gap-2">
         <select
           className="input"
           value={id}
@@ -1024,9 +986,10 @@ function DeductionAssign({
             )
           }
         />
-      </div>
+      </fieldset>
 
       <button
+        disabled={!canManage}
         type="button"
         onClick={() => {
           if (id) {

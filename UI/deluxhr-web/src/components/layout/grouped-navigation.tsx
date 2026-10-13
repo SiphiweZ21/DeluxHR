@@ -7,7 +7,7 @@ import { useWorkspaceAccess } from './workspace-access';
 import { routeAllowed } from '../../lib/workspace-access';
 export function GroupedNavigation({onNavigate}:{onNavigate?:()=>void}) {
  const {access}=useWorkspaceAccess(),path=usePathname();
- const [query,setQuery]=useState(''),[collapsed,setCollapsed]=useState<string[]>([]);
+ const [query,setQuery]=useState(''),[collapsed,setCollapsed]=useState<string[]>(navGroups.map(g=>g.label));
  if(!access)return <p className="p-3 text-sm text-slate-500">Loading menu…</p>;
  const allFeatures={...access,features:access.services.map(s=>s.feature)};
  const groups=navGroups.map(g=>({...g,items:g.items.filter(i=>routeAllowed(access,i.href)||(access.role==='COMPANY_ADMIN'&&routeAllowed(allFeatures,i.href)))})).filter(g=>g.items.length);
