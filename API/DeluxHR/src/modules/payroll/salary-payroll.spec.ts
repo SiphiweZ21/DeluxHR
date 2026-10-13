@@ -12,7 +12,8 @@ function setup(){
   employee:{findFirst:jest.fn().mockResolvedValue(employee)},
   earning:{findMany:jest.fn(),updateMany:jest.fn()},
   payrollSettings:{upsert:jest.fn().mockResolvedValue({payFrequency:'MONTHLY',uifRegistered:true,sdlApplicable:false})},
-  payrollBatch:{findUnique:jest.fn().mockResolvedValue(null),create:jest.fn().mockImplementation(async ({data})=>({id:'cycle',...data})),update:jest.fn().mockResolvedValue({})},
+  payrollBatch:{findFirst:jest.fn().mockResolvedValue(null),count:jest.fn().mockResolvedValue(0),create:jest.fn().mockImplementation(async ({data})=>({id:'cycle',...data})),update:jest.fn().mockResolvedValue({})},
+  auditLog:{create:jest.fn().mockResolvedValue({})},
   payrollRun:{findFirst:jest.fn().mockImplementation(async ({where})=>where.id?generated:null),create:jest.fn().mockImplementation(async ({data})=>(generated={id:'run',...data})),delete:jest.fn()},
   payrollRunStatusHistory:{create:jest.fn().mockResolvedValue({})},
   payrollBatchEmployee:{create:jest.fn().mockResolvedValue({})},
@@ -50,10 +51,32 @@ describe('Salary payroll without timesheets',()=>{
   await expect(service.generateFromSalary('company',dto,'maker')).rejects.toThrow('overlapping');
   expect(tx.payrollBatch.create).not.toHaveBeenCalled();expect(tx.payrollRun.create).not.toHaveBeenCalled();
  });
- it.each(['REVIEWED','APPROVED','LOCKED'])('rejects additions to a %s cycle',async status=>{
-  const {service,tx}=setup();tx.payrollBatch.findUnique.mockResolvedValue({id:'cycle',status});
-  await expect(service.generateFromSalary('company',dto,'maker')).rejects.toThrow('already under review');
-  expect(tx.payrollRun.create).not.toHaveBeenCalled();
+ it.each(['REVIEWED','APPROVED','LOCKED','PAYMENT_PROCESSING','PAID','CANCELLED'])('creates a separate batch when the earlier batch is %s',async status=>{
+  const {service,tx}=setup();
+  const frozen={id:'original-cycle',status};
+  tx.payrollBatch.findFirst.mockImplementation(async ({where}:any)=>where.status.in.includes(frozen.status)?frozen:null);
+  tx.payrollBatch.count.mockResolvedValue(1);
+  const run=await service.generateFromSalary('company',dto,'maker');
+  expect(run).toMatchObject({payrollBatchId:'cycle',employeeId:'employee',status:'CALCULATED'});
+  expect(tx.payrollBatch.create).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({title:'Selected employee salary payroll · Batch 2',organizationId:'company'})}));
+  expect(tx.payrollBatch.update).not.toHaveBeenCalledWith(expect.objectContaining({where:{id:'original-cycle'}}));
+  expect(tx.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({action:'PAYROLL_BATCH_CREATED',metadata:expect.objectContaining({supplementary:true})})}));
+ });
+ it.each(['DRAFT','CALCULATED'])('adds another employee to a compatible %s batch',async status=>{
+  const {service,tx}=setup();tx.payrollBatch.findFirst.mockResolvedValue({id:'open-cycle',status,currency:'ZAR',paymentDate:new Date(dto.paymentDate)});
+  const run=await service.generateFromSalary('company',dto,'maker');
+  expect(run.payrollBatchId).toBe('open-cycle');expect(tx.payrollBatch.create).not.toHaveBeenCalled();expect(tx.payrollBatch.count).not.toHaveBeenCalled();
+  expect(tx.payrollBatch.findFirst).toHaveBeenCalledWith(expect.objectContaining({where:expect.objectContaining({organizationId:'company',status:{in:['DRAFT','CALCULATED']},currency:'ZAR',OR:[{paymentDate:null},{paymentDate:new Date(dto.paymentDate)}]})}));
+ });
+ it('does not mix a different payment date into an existing batch',async()=>{
+  const {service,tx}=setup();tx.payrollBatch.findFirst.mockResolvedValue(null);tx.payrollBatch.count.mockResolvedValue(1);
+  await service.generateFromSalary('company',{...dto,paymentDate:'2026-11-02'},'maker');
+  expect(tx.payrollBatch.create).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({paymentDate:new Date('2026-11-02'),title:'Selected employee salary payroll · Batch 2'})}));
+ });
+ it('also rejects overlapping employee payroll through a second earnings-based batch',async()=>{
+  const {service,tx}=setup();tx.payrollRun.findFirst.mockResolvedValue({id:'first-run',payrollBatchId:'locked-cycle',status:'LOCKED'});
+  await expect(service.generateFromEarnings('company',dto,'maker',{payrollBatchId:'second-cycle'})).rejects.toThrow('overlapping');
+  expect(tx.$executeRaw).toHaveBeenCalled();expect(tx.payrollRun.create).not.toHaveBeenCalled();
  });
  it('requires a profile and a positive basic salary',async()=>{
   const {service,employee}=setup();employee.payrollProfile.basicSalary=0;

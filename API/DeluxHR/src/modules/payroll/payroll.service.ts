@@ -55,6 +55,7 @@ interface DeductionBreakdownItem {
 interface PayrollGenerationOptions {
   payrollBatchId?: string;
   salary?: GenerateSalaryPayrollDto;
+  periodChecked?: boolean;
 }
 
 interface PayrollLedgerItem {
@@ -447,15 +448,38 @@ export class PayrollService {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${organizationId + '|salary-payroll'}))`;
       const existing = await tx.payrollRun.findFirst({where:{organizationId,employeeId:dto.employeeId,status:{not:'CANCELLED'},payPeriodStart:{lte:periodEnd},payPeriodEnd:{gte:periodStart}}});
       if (existing) throw new BadRequestException('This employee already has a payroll run overlapping this period. Review that run instead of generating another.');
-      let batch = await tx.payrollBatch.findUnique({where:{organizationId_payPeriodStart_payPeriodEnd:{organizationId,payPeriodStart:periodStart,payPeriodEnd:periodEnd}}});
-      if (batch && (!['DRAFT','CALCULATED'].includes(batch.status))) throw new BadRequestException('This payroll cycle is already under review.');
-      if (batch && batch.currency !== 'ZAR') throw new BadRequestException('Salary payroll requires a ZAR payroll cycle.');
-      if (batch?.paymentDate && dto.paymentDate && batch.paymentDate.getTime() !== new Date(dto.paymentDate).getTime()) throw new BadRequestException('Use the payment date already selected for this payroll cycle.');
-      if (!batch) batch = await tx.payrollBatch.create({data:{organizationId,payPeriodStart:periodStart,payPeriodEnd:periodEnd,paymentDate:dto.paymentDate?new Date(dto.paymentDate):periodEnd,title:dto.title ?? 'Selected employee salary payroll',createdByUserId:userId}});
+      // The company salary-payroll advisory lock above also protects batch review/approval.
+      // Reuse only an editable batch. Frozen cycles are never reopened or changed.
+      const period = { organizationId, payPeriodStart: periodStart, payPeriodEnd: periodEnd };
+      let batch = await tx.payrollBatch.findFirst({
+        where: { ...period, status: { in: ['DRAFT', 'CALCULATED'] }, currency: 'ZAR',
+          ...(dto.paymentDate ? { OR: [{ paymentDate: null }, { paymentDate: new Date(dto.paymentDate) }] } : {}),
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      });
+      if (!batch) {
+        const count = await tx.payrollBatch.count({ where: period });
+        batch = await tx.payrollBatch.create({ data: {
+          ...period, paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : periodEnd,
+          title: dto.title?.trim() || `Selected employee salary payroll · Batch ${count + 1}`,
+          createdByUserId: userId,
+        } });
+        await tx.auditLog.create({ data: {
+          organizationId, action: 'PAYROLL_BATCH_CREATED', entity: 'PayrollBatch', entityId: batch.id, actorUserId: userId,
+          metadata: { payPeriodStart: periodStart.toISOString(), payPeriodEnd: periodEnd.toISOString(), batchNumber: count + 1, supplementary: count > 0 },
+        } });
+      }
+      if (!batch.paymentDate && dto.paymentDate) {
+        batch = await tx.payrollBatch.update({ where: { id: batch.id }, data: { paymentDate: new Date(dto.paymentDate) } });
+      }
       const calculator = new PayrollService(tx as unknown as PrismaService, this.taxEngine);
       const run = await calculator.generateFromEarnings(organizationId,{...dto,paymentDate:batch.paymentDate?.toISOString()},userId,{payrollBatchId:batch.id,salary:dto});
       await tx.payrollBatchEmployee.create({data:{organizationId,payrollBatchId:batch.id,employeeId:dto.employeeId,payrollRunId:run.id,eligibilityStatus:'READY',processingStatus:'GENERATED',generatedAt:new Date()}});
       await tx.payrollBatch.update({where:{id:batch.id},data:{status:'CALCULATED',generationStartedByUserId:userId,generationStartedAt:new Date(),calculatedAt:new Date()}});
+      await tx.auditLog.create({ data: {
+        organizationId, action: 'SALARY_PAYROLL_CALCULATED', entity: 'PayrollRun', entityId: run.id, actorUserId: userId,
+        metadata: { employeeId: dto.employeeId, payrollBatchId: batch.id, payPeriodStart: periodStart.toISOString(), payPeriodEnd: periodEnd.toISOString() },
+      } });
       return run;
     },{timeout:30000});
   }
@@ -467,7 +491,15 @@ export class PayrollService {
 
     userId?: string,
     options: PayrollGenerationOptions = {},
-  ) {
+  ): Promise<Awaited<ReturnType<PayrollService['findOne']>>> {
+    if (options.payrollBatchId && !options.salary && !options.periodChecked) {
+      return this.prisma.$transaction(async tx => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${organizationId + '|salary-payroll'}))`;
+        const existing = await tx.payrollRun.findFirst({ where: { organizationId, employeeId: dto.employeeId, status: { not: 'CANCELLED' }, payPeriodStart: { lte: new Date(dto.payPeriodEnd) }, payPeriodEnd: { gte: new Date(dto.payPeriodStart) } } });
+        if (existing) throw new BadRequestException('This employee already has a payroll run overlapping this period. Review that run instead of generating another.');
+        return new PayrollService(tx as unknown as PrismaService, this.taxEngine).generateFromEarnings(organizationId, dto, userId, { ...options, periodChecked: true });
+      }, { timeout: 30000 });
+    }
     const periodStart = new Date(dto.payPeriodStart);
 
     const periodEnd = new Date(dto.payPeriodEnd);

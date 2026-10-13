@@ -953,7 +953,7 @@ model PayrollBatch {
   batchEmployees PayrollBatchEmployee[]
   paymentBatches PayrollPaymentBatch[]
 
-  @@unique([organizationId, payPeriodStart, payPeriodEnd])
+  @@index([organizationId, payPeriodStart, payPeriodEnd])
   @@index([organizationId])
   @@index([status])
   @@index([payPeriodStart, payPeriodEnd])

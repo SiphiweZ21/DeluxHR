@@ -91,7 +91,7 @@ export default function Page() {
                 </option>
                 {cycles.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.title} · {c.paymentDate?.slice(0, 10)}
+                    {c.title} · {c.id.slice(0, 8).toUpperCase()} · {c.paymentDate?.slice(0, 10)}
                   </option>
                 ))}
               </select>

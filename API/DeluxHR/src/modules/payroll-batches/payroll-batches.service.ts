@@ -98,7 +98,7 @@ export class PayrollBatchesService {
         error.code === 'P2002'
       ) {
         throw new ConflictException(
-          'A payroll cycle already exists for this pay period.',
+          'Payroll batch could not be created because its identifier already exists. Please retry.',
         );
       }
       throw error;
@@ -107,6 +107,7 @@ export class PayrollBatchesService {
   async list(organizationId: string) {
     return this.prisma.payrollBatch.findMany({
       where: { organizationId },
+      include: { _count: { select: { payrollRuns: true } } },
       orderBy: [{ payPeriodStart: 'desc' }, { createdAt: 'desc' }],
     });
   }
