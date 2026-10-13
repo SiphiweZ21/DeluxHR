@@ -73,7 +73,7 @@ describe('Salary payroll without timesheets',()=>{
  });
 });
 
-describe('Two-person payroll cycle approval',()=>{
+describe('Single-admin payroll cycle approval',()=>{
  function setupApproval(actorId:string){
   const tx:any={$executeRaw:jest.fn(),payrollBatch:{findFirst:jest.fn().mockResolvedValue({status:'REVIEWED',_count:{payrollRuns:1}}),update:jest.fn()},payrollRun:{updateMany:jest.fn()},payrollRunStatusHistory:{createMany:jest.fn()}};
   const db:any={payrollBatch:{findFirst:jest.fn().mockResolvedValue({id:'cycle',status:'REVIEWED',createdByUserId:'maker',generationStartedByUserId:'maker',reviewedByUserId:'checker',_count:{payrollRuns:1}})},payrollSettings:{findUnique:jest.fn().mockResolvedValue({approvalMode:'MAKER_CHECKER'})},payrollRun:{findMany:jest.fn().mockResolvedValue([{id:'run'}])},$transaction:jest.fn().mockImplementation(fn=>fn(tx))};
@@ -82,7 +82,7 @@ describe('Two-person payroll cycle approval',()=>{
   return {service,db,tx,actor:{sub:actorId,email:'test@example.com',role:'COMPANY_ADMIN',organizationId:'company'} as any};
  }
  it('lets the independent checker review and approve',async()=>{const {service,actor,tx}=setupApproval('checker');await service.approve('company','cycle',actor);expect(tx.payrollBatch.update).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({status:'APPROVED',approvedByUserId:'checker'})}));});
- it('still rejects the payroll maker',async()=>{const {service,actor,db}=setupApproval('maker');await expect(service.approve('company','cycle',actor)).rejects.toThrow('cannot approve');expect(db.$transaction).not.toHaveBeenCalled();});
+ it('allows the authorised payroll maker to approve',async()=>{const {service,actor,tx}=setupApproval('maker');await service.approve('company','cycle',actor);expect(tx.payrollBatch.update).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({approvedByUserId:'maker'})}));});
  it('rejects approval if the cycle changed after the review snapshot',async()=>{const {service,actor,tx}=setupApproval('checker');tx.payrollBatch.findFirst.mockResolvedValue({status:'CALCULATED',_count:{payrollRuns:2}});await expect(service.approve('company','cycle',actor)).rejects.toThrow('cycle changed');expect(tx.payrollBatch.update).not.toHaveBeenCalled();});
 
 });

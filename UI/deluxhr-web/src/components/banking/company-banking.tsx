@@ -57,8 +57,8 @@ export function CompanyBanking() {
             Banking & payments
           </h2>
           <p className="mt-2 text-sm text-slate-500">
-            Configure company funding accounts and payment defaults. A different
-            company administrator reviews each account.
+            Configure company funding accounts and payment defaults. The same authorised
+            company administrator can review each account.
           </p>
         </div>
         <button
@@ -97,7 +97,7 @@ export function CompanyBanking() {
                 void action.run(async () => {
                   if (
                     !window.confirm(
-                      "Submit this funding account for independent review?",
+                      "Submit this funding account for authorised review?",
                     )
                   )
                     return false;
@@ -323,7 +323,7 @@ export function CompanyBanking() {
             <Card title={`Review ${review.name}`}>
               <p className="text-sm">
                 Verify the funding account against company bank evidence. Sign
-                in as a different company administrator from the submitter.
+                in as an authorised company administrator; the submitter can also review.
                 Approved details are immutable; create a new profile for any
                 change.
               </p>
@@ -335,7 +335,7 @@ export function CompanyBanking() {
                   const form = e.currentTarget,
                     d = new FormData(form);
                   void action.run(async () => {
-                    if (!window.confirm("Record this independent review?"))
+                    if (!window.confirm("Record this authorised review?"))
                       return false;
                     try {
                       await api.reviewBankingProfile(
@@ -442,7 +442,7 @@ export function CompanyBanking() {
           )}
           <Card title="Payment-purpose defaults">
             <p className="text-sm">
-              Select independently approved profiles. These defaults do not
+              Select approved profiles. These defaults do not
               activate bank exports.
             </p>
             <div className="grid gap-4 lg:grid-cols-3">

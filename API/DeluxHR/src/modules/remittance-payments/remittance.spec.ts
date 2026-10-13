@@ -359,12 +359,11 @@ describe('Remittance preparation and statutory routing', () => {
       }),
     ).rejects.toThrow('must use SARS');
   });
-  it('prevents self beneficiary approval and conflicting UIF route approval', async () => {
+  it('allows own beneficiary review but rejects conflicting UIF route approval', async () => {
     const x = setup('PREPARED', 'UIF_PORTAL');
     x.profile.status = 'PENDING_APPROVAL';
-    await expect(
-      x.service.review(maker, 'profile', { ...auth, decision: 'APPROVED' }),
-    ).rejects.toThrow('Independent');
+    await x.service.review(maker, 'profile', { ...auth, decision: 'APPROVED' });
+    x.profile.status = 'PENDING_APPROVAL';
     x.tx.remittanceBeneficiary.findMany.mockResolvedValue([
       { route: 'SARS_EFILING', uifViaSars: true },
     ]);
@@ -394,11 +393,10 @@ describe('Remittance preparation and statutory routing', () => {
       'Cancel unsubmitted',
     );
   });
-  it('prevents self release and requires current entitlement and organization grant', async () => {
+  it('allows own release and requires current entitlement and organization grant', async () => {
     const x = setup();
-    await expect(x.service.approve(maker, 'batch', auth)).rejects.toThrow(
-      'Independent release',
-    );
+    await x.service.approve(maker, 'batch', auth);
+    expect(x.tx.remittancePaymentBatch.update).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({approvedBy:maker.sub})}));
     x.access.getEffectivePermissions.mockResolvedValue([
       { permission: Permission.APPROVE_PAYROLL_PAYMENTS, scope: 'SELF' },
     ]);
@@ -461,14 +459,10 @@ describe('Remittance preparation and statutory routing', () => {
     expect(x.batch.status).toBe('SUBMITTED');
     expect(x.tx.payrollRemittancePayment.create).not.toHaveBeenCalled();
   });
-  it('requires independent bank result; rejects overpaid or partial amounts classified as full payment', async () => {
+  it('allows own bank-result review but rejects incorrect full-payment amounts', async () => {
     const x = setup('SUBMITTED');
-    await expect(x.service.result(maker, 'batch', result)).rejects.toThrow(
-      'Independent bank-result',
-    );
-    await expect(x.service.result(submitter, 'batch', result)).rejects.toThrow(
-      'Independent bank-result',
-    );
+    await expect(x.service.result(maker, 'batch', {...result,actualPaidCents:9000})).rejects.toThrow('Paid must equal');
+    await expect(x.service.result(submitter, 'batch', {...result,actualPaidCents:11000})).rejects.toThrow('Paid must equal');
     await expect(
       x.service.result(checker, 'batch', { ...result, actualPaidCents: 9000 }),
     ).rejects.toThrow('Paid must equal');

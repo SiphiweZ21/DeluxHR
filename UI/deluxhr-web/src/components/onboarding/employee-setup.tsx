@@ -268,7 +268,7 @@ export function EmployeeSetup() {
                     setRows([]);
                     setFileName("");
                     await refreshed(setup.refresh);
-                  }, "Employees imported. Complete profiles and arrange independent verification.")
+                  }, "Employees imported. Complete profiles and arrange authorised verification.")
                 }
               >
                 Import employees
@@ -413,7 +413,7 @@ export function EmployeeSetup() {
           <Card title="3. Independent verification">
             <p className="text-sm">
               Sign in as the second company administrator to review and activate
-              pending employees. The creator cannot approve their own records.
+              pending employees. The creator can approve their own records if authorised.
             </p>
           </Card>
           <SetupForm
@@ -421,7 +421,7 @@ export function EmployeeSetup() {
             description="Review identity and employment documents before activation."
             submitLabel="Verify & activate employee"
             fields={[]}
-            confirm="Activate this employee after independent verification?"
+            confirm="Activate this employee after authorised verification?"
             save={async (d) => {
               const e = await api.setupActivateEmployee(
                 string(d, "employeeId"),
@@ -609,7 +609,7 @@ function EmployeeReview() {
           <p className="sm:col-span-2 text-slate-500">
             Identity numbers are masked. Review the uploaded identity and
             employment evidence in Company & employee documents before
-            independently activating the record.
+            activating the record.
           </p>
         </div>
       )}
@@ -633,7 +633,7 @@ function PendingEmployeeQueue() {
     <div id="pending-employee-approvals"><Card title="Pending approval list">
       <Notice error={action.error} message={action.message} />
       <p className="text-sm mb-3">
-        Keep adding employees above. Return here when an independent authorised
+        Keep adding employees above. Return here when an authorised
         approver is ready. Review profiles and documents before selecting a
         batch (maximum 100).
       </p>
@@ -677,7 +677,7 @@ function PendingEmployeeQueue() {
           void action.run(async () => {
             if (
               !window.confirm(
-                `Approve ${selected.length} employees after independent review?`,
+                `Approve ${selected.length} employees after authorised review?`,
               )
             )
               return false;

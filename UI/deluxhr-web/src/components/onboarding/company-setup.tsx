@@ -189,7 +189,7 @@ export function CompanySetup() {
       </Card>
       <SetupForm
         title="Create company administrator"
-        description="Add an independent checker for pending setup. Two different active company administrators in this company can complete onboarding verification; self-approval remains blocked."
+        description="Add another administrator if needed. One authorised administrator can complete onboarding verification; additional accounts are optional."
         fields={[
           { name: "fullName", label: "Full name", required: true },
           { name: "email", label: "Email", type: "email", required: true },

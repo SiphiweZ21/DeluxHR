@@ -503,14 +503,6 @@ export class PayrollBatchesService {
       where: { organizationId },
       select: { approvalMode: true },
     });
-    if (
-      settings?.approvalMode === 'MAKER_CHECKER' &&
-      batch.generationStartedByUserId === actor.sub
-    ) {
-      throw new BadRequestException(
-        'Maker-checker is enabled. The user who generated this payroll cycle cannot review it.',
-      );
-    }
     const reviewedAt = new Date();
     const calculatedRuns = await this.prisma.payrollRun.findMany({
       where: {
@@ -626,11 +618,7 @@ export class PayrollBatchesService {
       select: { approvalMode: true },
     });
     {
-      if (batch.createdByUserId === actor.sub || batch.generationStartedByUserId === actor.sub) {
-        throw new BadRequestException(
-          'Maker-checker is enabled. The user who generated this payroll cycle cannot approve it.',
-        );
-      }
+
     }
     const reviewState = await this.getReview(organizationId, payrollBatchId);
     if (reviewState.employeeSummary.generating > 0) {

@@ -468,10 +468,7 @@ export class PayrollLiabilitiesService {
             throw new NotFoundException('Remittance payment not found');
           if (item.status !== 'RECORDED')
             throw new ConflictException('Payment has already been decided');
-          if (item.createdByUserId === actor.sub)
-            throw new BadRequestException(
-              'A different user must confirm or void a payment record.',
-            );
+
           if (!reason || reason.trim().length < 8)
             throw new BadRequestException(
               'Decision reason of at least 8 characters is required',

@@ -230,13 +230,7 @@ export default function Page() {
                   this page cannot approve its own company.
                 </p>
                 <p className="text-sm mt-3">
-                  Independent setup approval: create a second company
-                  administrator, then sign in as that administrator to activate
-                  employees and approve bank submissions created by the first
-                  administrator. Both accounts must be active and belong to this
-                  pending company. Creators cannot approve their own records;
-                  bank approval requires the checker’s password. Normal checker
-                  roles apply after company activation.
+                  One authorised company administrator can verify employees and review bank submissions, including their own submissions. Bank review requires your own password. Employee requests still need an administrator's decision. All actions are recorded in audit history.
                 </p>
                 <p className="text-sm mt-3">
                   Opening leave/payroll review confirmations must follow the

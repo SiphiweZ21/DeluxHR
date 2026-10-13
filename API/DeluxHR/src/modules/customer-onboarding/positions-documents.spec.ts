@@ -251,7 +251,7 @@ describe('Private company document onboarding', () => {
       x.s.companyDocumentFile(actor, 'foreign'),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
-  it('requires independent pending review and prevents concurrent/repeated decisions', async () => {
+  it('allows uploader review and prevents concurrent/repeated decisions', async () => {
     const x = setup();
     x.tx.companyOnboardingDocument.findFirst.mockResolvedValue({
       uploadedBy: 'admin',
@@ -259,14 +259,14 @@ describe('Private company document onboarding', () => {
     });
     await expect(
       x.s.decideCompanyDocument(actor, 'doc', 'VERIFIED', 'Checked document'),
-    ).rejects.toThrow('Independent');
+    ).resolves.toMatchObject({status:'VERIFIED'});
     x.tx.companyOnboardingDocument.findFirst.mockResolvedValue({
       uploadedBy: 'maker',
       status: 'VERIFIED',
     });
     await expect(
       x.s.decideCompanyDocument(actor, 'doc', 'REJECTED', 'Checked document'),
-    ).rejects.toThrow('Independent');
+    ).rejects.toThrow('pending company document');
     x.tx.companyOnboardingDocument.findFirst.mockResolvedValue({
       uploadedBy: 'maker',
       status: 'PENDING_VERIFICATION',
@@ -460,7 +460,7 @@ describe('Employee document boundaries', () => {
     });
     expect(storage.read).not.toHaveBeenCalled();
   });
-  it('rejects uploader self-verification on the existing employee document service', async () => {
+  it('allows authorised uploader verification with audit on the employee document service', async () => {
     const db: any = {
         employee: { findFirst: jest.fn(async () => ({ id: 'employee' })) },
         employeeDocument: {
@@ -469,14 +469,14 @@ describe('Employee document boundaries', () => {
             status: 'PENDING_VERIFICATION',
             uploadedByUserId: 'admin',
           })),
-          updateMany: jest.fn(),
+          updateMany: jest.fn().mockResolvedValue({count:1}),
         },
       },
-      s = new EmployeeDocumentsService(db, {} as any, {} as any);
+      s = new EmployeeDocumentsService(db, {log:jest.fn()} as any, {} as any);
     await expect(
       s.verify('org', 'employee', 'document', actor),
-    ).rejects.toThrow('different user');
-    expect(db.employeeDocument.updateMany).not.toHaveBeenCalled();
+    ).resolves.toBeDefined();
+    expect(db.employeeDocument.updateMany).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({verifiedByUserId:actor.sub})}));
   });
 });
 

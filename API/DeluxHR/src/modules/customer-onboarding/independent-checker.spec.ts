@@ -21,6 +21,7 @@ function fixture() {
   const users: any[] = [
     {
       id: 'maker',
+      passwordHash: 'test-hash',
       role: 'COMPANY_ADMIN',
       organizationId: 'org',
       isActive: true,
@@ -200,37 +201,28 @@ describe('Independent pending-company onboarding approvals', () => {
         metadata: expect.objectContaining({
           makerUserId: 'maker',
           checkerUserId: 'checker',
-          onboardingIndependentAdmin: true,
+          onboardingIndependentAdmin: false,
         }),
       }),
       f.tx,
     );
   });
-  it('does not widen ordinary or active-company activation', async () => {
-    const f = fixture();
-    await expect(
-      f.employees.activate('org', 'employee', actor),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-    f.tx.organization.findUnique.mockResolvedValue({ status: 'ACTIVE' });
-    await expect(
-      f.employees.activate('org', 'employee', actor, true),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-    expect(f.tx.employee.updateMany).not.toHaveBeenCalled();
-  });
+  it('allows active-company administration while pending operational routes remain restricted',async()=>{
+ const f=fixture();await expect(f.employees.activate('org','employee',actor)).rejects.toBeInstanceOf(ForbiddenException);
+ f.tx.organization.findUnique.mockResolvedValue({status:'ACTIVE'});await f.employees.activate('org','employee',actor);
+ expect(f.tx.employee.updateMany).toHaveBeenCalled();
+ });
   it('preserves ordinary HR verification', async () => {
     const f = fixture();
-    await f.employees.activate('org', 'employee', {
-      ...actor,
-      role: UserRole.HR_ADMIN,
-    });
+    f.users[1].role='HR_ADMIN';
+    await f.employees.activate('org', 'employee', {...actor,role:UserRole.HR_ADMIN});
     expect(f.tx.employee.updateMany).toHaveBeenCalled();
     expect(f.tx.$queryRaw).not.toHaveBeenCalled();
   });
-  it('preserves self-approval, incomplete-profile and duplicate-risk rejection', async () => {
+  it('allows same-admin activation and preserves incomplete-profile and duplicate-risk rejection', async () => {
     const f = fixture();
-    await expect(
-      f.employees.activate('org', 'employee', { ...actor, sub: 'maker' }, true),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    await f.employees.activate('org', 'employee', { ...actor, sub: 'maker' }, true);
+    f.tx.employee.updateMany.mockClear();f.audit.log.mockClear();
     f.employee.jobTitle = '';
     await expect(
       f.employees.activate('org', 'employee', actor, true),
@@ -281,7 +273,7 @@ describe('Independent pending-company onboarding approvals', () => {
         metadata: expect.objectContaining({
           requestedByUserId: 'maker',
           reauthenticated: true,
-          onboardingIndependentAdmin: true,
+          onboardingIndependentAdmin: false,
         }),
       }),
       f.tx,
@@ -304,34 +296,15 @@ describe('Independent pending-company onboarding approvals', () => {
     expect(f.tx.employeePayrollProfile.upsert).not.toHaveBeenCalled();
     expect(f.audit.log).not.toHaveBeenCalled();
   });
-  it('blocks bank self approval and ordinary/active-company company-admin approval', async () => {
-    const f = fixture();
-    await expect(
-      f.payments.approve(
-        'org',
-        'employee',
-        'payment',
-        'password',
-        { ...bankActor, id: 'maker' },
-        true,
-      ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-    await expect(
-      f.payments.approve('org', 'employee', 'payment', 'password', bankActor),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-    f.tx.organization.findUnique.mockResolvedValue({ status: 'ACTIVE' });
-    await expect(
-      f.payments.approve(
-        'org',
-        'employee',
-        'payment',
-        'password',
-        bankActor,
-        true,
-      ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-    expect(f.tx.employeePaymentDetail.updateMany).not.toHaveBeenCalled();
-  });
+  it('allows same-admin bank approval during onboarding and after activation',async()=>{
+ const f=fixture();await f.payments.approve('org','employee','payment','password',{...bankActor,id:'maker'},true);
+ expect(f.tx.employeePaymentDetail.updateMany).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({approvedByUserId:'maker'})}));
+ await f.payments.approve('org','employee','payment','password',bankActor);
+ expect(f.audit.log).toHaveBeenCalled();
+ });
+ it.each([{isActive:false},{organizationId:'foreign'},{role:'SUPER_ADMIN'},{role:'EMPLOYEE'}])('still rejects invalid bank reviewer %j',async patch=>{
+ const f=fixture();Object.assign(f.users[1],patch);await expect(f.payments.approve('org','employee','payment','password',bankActor)).rejects.toBeInstanceOf(ForbiddenException);expect(f.tx.employeePaymentDetail.updateMany).not.toHaveBeenCalled();
+ });
   it('enables the exception from onboarding controller only', () => {
     const c: any = Object.create(CustomerOnboardingController.prototype);
     c.onboarding = { assertAdmin: jest.fn() };

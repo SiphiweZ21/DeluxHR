@@ -96,7 +96,7 @@ export class EmployeeCommunicationsService {
  async review(actor: TenantJwtUser, id: string, status: 'APPROVED' | 'REJECTED', reason?: string) {
   if (!['APPROVED','REJECTED'].includes(status)) throw new BadRequestException('Approve or reject the announcement.');
   const announcement = await this.detail(actor,id);
-  if (announcement.createdByUserId === actor.sub) throw new ForbiddenException('You cannot review your own announcement. Another authorised executive must review it.');
+
   if (status === 'REJECTED' && (!reason || reason.trim().length < 3)) throw new BadRequestException('Provide a rejection reason of at least three characters.');
   if (status === 'APPROVED' && announcement.expiresAt && announcement.expiresAt <= new Date()) throw new BadRequestException('Announcement has expired. Submit a new announcement.');
   return this.db.$transaction(async tx => {

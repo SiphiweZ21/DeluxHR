@@ -97,7 +97,7 @@ export function RemittanceBeneficiaries() {
       setSelected("");
       await load();
       setMessage(
-        "Profile submitted. A different company administrator must inspect and approve it.",
+        "Profile submitted. An authorised company administrator can inspect and approve it, including the submitter.",
       );
     });
   }
@@ -328,12 +328,11 @@ export function RemittanceBeneficiaries() {
             {current.status === "PENDING_APPROVAL" &&
               current.createdBy === actor && (
                 <p className="text-sm text-slate-500">
-                  Your profile awaits another company administrator.
+                  You can review this profile using your password.
                 </p>
               )}
             {(current.status === "APPROVED" ||
-              (current.status === "PENDING_APPROVAL" &&
-                current.createdBy !== actor)) && (
+              current.status === "PENDING_APPROVAL") && (
               <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
                 <Field label="Audit reason">
                   <textarea

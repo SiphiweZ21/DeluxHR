@@ -315,10 +315,6 @@ export class EmployeeDocumentsService {
       documentId,
     );
 
-    if (document.uploadedByUserId === actor.sub)
-      throw new BadRequestException(
-        'A different user must review the uploaded document.',
-      );
     if (document.status !== EmployeeDocumentStatus.PENDING_VERIFICATION) {
       throw new BadRequestException(
         'Only a pending employee document can be verified.',
@@ -391,10 +387,6 @@ export class EmployeeDocumentsService {
       documentId,
     );
 
-    if (document.uploadedByUserId === actor.sub)
-      throw new BadRequestException(
-        'A different user must review the uploaded document.',
-      );
     if (document.status !== EmployeeDocumentStatus.PENDING_VERIFICATION) {
       throw new BadRequestException(
         'Only a pending employee document can be rejected.',

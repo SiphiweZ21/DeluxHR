@@ -174,9 +174,9 @@ export class CustomerOnboardingController {
       doc = (await this.documents.list(org, id)).find(
         (d) => d.id === documentId,
       );
-    if (!doc || doc.uploadedByUserId === a.sub)
+    if (!doc)
       throw new BadRequestException(
-        'A different company administrator must review this document.',
+        'Document not found.',
       );
     return this.documents.verify(org, id, documentId, a);
   }
@@ -190,9 +190,9 @@ export class CustomerOnboardingController {
       doc = (await this.documents.list(org, id)).find(
         (v) => v.id === documentId,
       );
-    if (!doc || doc.uploadedByUserId === a.sub)
+    if (!doc)
       throw new BadRequestException(
-        'A different company administrator must review this document.',
+        'Document not found.',
       );
     return this.documents.reject(org, id, documentId, d.reason, a);
   }

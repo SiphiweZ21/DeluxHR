@@ -41,7 +41,7 @@ export class LeaveRequestsService {
    const request = await this.prisma.leaveRequest.findFirst({ where: { id, organizationId: user.organizationId }, include: { employee: true } });
    if (!request) throw new NotFoundException('Leave request not found');
    await this.access.requirePermission(user, Permission.APPROVE_LEAVE);
-   if (request.submittedByUserId === user.sub || request.employee.userId === user.sub) throw new ForbiddenException('You cannot approve or reject your own leave submission. Another authorised HR or executive user must review it.');
+
    if (request.status !== 'PENDING') throw new ConflictException('Leave request already processed');
    if (request.approvalWorkflowId) throw new ConflictException('This request must follow its configured approval workflow');
    if (status === 'REJECTED') {

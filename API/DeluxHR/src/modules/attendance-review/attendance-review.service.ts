@@ -684,10 +684,7 @@ export class AttendanceReviewService implements OnModuleInit, OnModuleDestroy {
       where: { id, organizationId: actor.organizationId },
     });
     if (!source) throw new NotFoundException('Attempt not found');
-    if (source.submittedByUserId === actor.sub)
-      throw new ForbiddenException(
-        'Another authorised reviewer must review your own attempt',
-      );
+
     if (
       dto.workLocationId &&
       !(await this.prisma.workLocation.findFirst({

@@ -1,4 +1,3 @@
-import { assertPendingOnboardingChecker } from '../../common/auth/pending-onboarding-checker';
 import {
   BadRequestException,
   ForbiddenException,
@@ -659,11 +658,7 @@ export class EmployeePaymentDetailsService {
     db: Prisma.TransactionClient | PrismaService = this.prisma,
     onboarding = false,
   ) {
-    if (requestedByUserId === checkerUserId) {
-      throw new ForbiddenException(
-        'The user who requested the payment detail change cannot approve or reject it',
-      );
-    }
+
 
     const [maker, checker] = await Promise.all([
       db.user.findUnique({
@@ -726,24 +721,8 @@ export class EmployeePaymentDetailsService {
     }
 
     const allowedCheckerRoles = this.allowedCheckerRolesForMaker(maker.role);
-
-    if (!allowedCheckerRoles.includes(checker.role)) {
-      if (
-        onboarding &&
-        maker.role === UserRole.COMPANY_ADMIN &&
-        checker.role === UserRole.COMPANY_ADMIN
-      ) {
-        await assertPendingOnboardingChecker(
-          db as Prisma.TransactionClient,
-          organizationId,
-          maker.id,
-          checker.id,
-        );
-        return { ...checker, onboardingIndependentAdmin: true };
-      }
-      throw new ForbiddenException(
-        'You are not an authorised checker for this payment detail request',
-      );
+    if (checker.role !== UserRole.COMPANY_ADMIN && !allowedCheckerRoles.includes(checker.role)) {
+      throw new ForbiddenException('Payroll or HR banking review permission is required for this account');
     }
 
     return { ...checker, onboardingIndependentAdmin: false };

@@ -43,12 +43,12 @@ function fixture(ownEmployee = false, ownCapture = false) {
     service: new AttendanceCorrectionsService(db, { log: jest.fn() } as any),
   };
 }
-describe('Attendance exception maker/checker separation', () => {
+describe('Attendance exception authorised single-admin review', () => {
   it.each([
     [true, false],
     [false, true],
   ])(
-    'rejects self-review of employee or captured evidence (%s,%s)',
+    'allows authorised self-review of employee or captured evidence (%s,%s)',
     async (ownEmployee, ownCapture) => {
       const x = fixture(ownEmployee, ownCapture);
       await expect(
@@ -56,8 +56,8 @@ describe('Attendance exception maker/checker separation', () => {
           status: 'RESOLVED',
           resolutionNote: 'Reviewed site evidence',
         }),
-      ).rejects.toThrow('Another authorised user');
-      expect(x.db.attendanceException.updateMany).not.toHaveBeenCalled();
+      ).resolves.toMatchObject({status:'RESOLVED'});
+      expect(x.db.attendanceException.updateMany).toHaveBeenCalled();
     },
   );
   it('allows an independent authorised reviewer to resolve the exception', async () => {

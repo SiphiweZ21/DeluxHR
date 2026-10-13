@@ -292,16 +292,6 @@ export class PayrollService {
       create: { organizationId },
     });
 
-    if (
-      target === PayrollRunStatus.APPROVED &&
-      (current.employee.userId === userId || current.calculatedByUserId === userId ||
-        current.reviewedByUserId === userId)
-    ) {
-      throw new BadRequestException(
-        'Maker/checker is enabled. The user who calculated or reviewed this payroll cannot approve it.',
-      );
-    }
-
     const now = new Date();
     const lifecycleData: Prisma.PayrollRunUpdateInput = { status: target };
 
@@ -458,7 +448,7 @@ export class PayrollService {
       const existing = await tx.payrollRun.findFirst({where:{organizationId,employeeId:dto.employeeId,status:{not:'CANCELLED'},payPeriodStart:{lte:periodEnd},payPeriodEnd:{gte:periodStart}}});
       if (existing) throw new BadRequestException('This employee already has a payroll run overlapping this period. Review that run instead of generating another.');
       let batch = await tx.payrollBatch.findUnique({where:{organizationId_payPeriodStart_payPeriodEnd:{organizationId,payPeriodStart:periodStart,payPeriodEnd:periodEnd}}});
-      if (batch && (!['DRAFT','CALCULATED'].includes(batch.status) || (batch.generationStartedByUserId && batch.generationStartedByUserId !== userId))) throw new BadRequestException('This payroll cycle is already under review or belongs to another payroll maker.');
+      if (batch && (!['DRAFT','CALCULATED'].includes(batch.status))) throw new BadRequestException('This payroll cycle is already under review.');
       if (batch && batch.currency !== 'ZAR') throw new BadRequestException('Salary payroll requires a ZAR payroll cycle.');
       if (batch?.paymentDate && dto.paymentDate && batch.paymentDate.getTime() !== new Date(dto.paymentDate).getTime()) throw new BadRequestException('Use the payment date already selected for this payroll cycle.');
       if (!batch) batch = await tx.payrollBatch.create({data:{organizationId,payPeriodStart:periodStart,payPeriodEnd:periodEnd,paymentDate:dto.paymentDate?new Date(dto.paymentDate):periodEnd,title:dto.title ?? 'Selected employee salary payroll',createdByUserId:userId}});

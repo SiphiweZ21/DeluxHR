@@ -343,7 +343,7 @@ export class EarlyPayService {
     const existing = await this.findRequest(organizationId, id);
 
     const employee = await this.prisma.employee.findFirst({ where: { id: existing.employeeId, organizationId }, select: { userId: true } });
-    if (existing.submittedByUserId === reviewerId || employee?.userId === reviewerId) throw new BadRequestException('You cannot review your own Early Pay submission. Another authorised finance or executive user must review it.');
+
     if (existing.status !== 'PENDING') {
       throw new BadRequestException('Only pending requests can be reviewed');
     }

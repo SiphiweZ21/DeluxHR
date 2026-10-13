@@ -22,16 +22,7 @@ export function PayrollSetup() {
         <p className="text-sm">Configure payroll profiles only for employees you will process in DeluxHR. Other active employees can stay in HR and be paid manually. One configured employee is enough to complete the opening payroll review. Approved banking details are required for employees included in a bank-file payment, not for payroll calculation or payslip generation.</p>
         <p className="text-sm">The review confirms the records you have configured; it does not certify that every employee is paid through DeluxHR. After a later import, review the intended payroll employees again.</p>
       </Card>
-      <Card title="Bank approval requirement">
-        <p className="text-sm">
-          During pending-company onboarding, a different active COMPANY_ADMIN in
-          the same company may approve another active company administrator’s
-          bank submission with their own password. Share the employee and
-          pending payment-detail IDs with that checker. The requester cannot
-          approve their own submission. After company activation, normal
-          HR/PAYROLL checker rules apply.
-        </p>
-      </Card>
+      <Card title="Banking review"><p className="text-sm">One authorised company administrator can submit and approve bank details. The review requires your own password and is recorded in audit history.</p></Card>
       <SetupForm
         title="Company payroll settings"
         description="Choose the payroll cycle, statutory registration settings and approval mode for this company."
@@ -48,7 +39,7 @@ export function PayrollSetup() {
             label: "Payroll approval mode",
             type: "select",
             required: true,
-            options: ["SINGLE_APPROVER", "MAKER_CHECKER"],
+            options: ["SINGLE_APPROVER"],
           },
           { name: "uifRegistered", label: "UIF registered", type: "checkbox" },
           { name: "sdlApplicable", label: "SDL applicable", type: "checkbox" },
@@ -133,7 +124,7 @@ export function PayrollSetup() {
       </SetupForm>
       <SetupForm
         title="Submit employee payment details"
-        description="Submitting creates a pending bank-detail version. A different permitted user must review and approve it with their own password."
+        description="Submitting creates a pending bank-detail version. An authorised user must review and approve it with their own password."
         fields={[
           {
             name: "bankName",
@@ -193,14 +184,14 @@ export function PayrollSetup() {
             {payment.status}
           </p>
           <p className="text-sm">
-            Give these IDs to the independent checker. Account numbers are shown
+            Use Employee Banking to select and review the pending submission. Account numbers are shown
             masked.
           </p>
         </Card>
       )}
       <SetupForm
         title="Approve employee payment details"
-        description="Sign in as a different permitted checker. The API enforces maker/checker roles and password verification. Approval replaces any previously approved bank-detail version."
+        description="An authorised administrator can review their own submission. The API verifies permissions and your password. Approval replaces any previously approved bank-detail version."
         fields={[
           {
             name: "paymentDetailId",
@@ -217,7 +208,7 @@ export function PayrollSetup() {
             maxLength: 200,
           },
         ]}
-        confirm="Approve this pending bank-detail version after independent review?"
+        confirm="Approve this pending bank-detail version after authorised review?"
         save={async (d) => {
           setPayment(
             await api.setupApprovePayment(

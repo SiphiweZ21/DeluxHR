@@ -398,4 +398,11 @@ describe('Payroll funding and file freeze', () => {
       service.generateExportFile('org', 'payment', 'FNB_CSV', actor),
     ).rejects.toThrow(ConflictException);
   });
+ it('allows the payment preparer to approve export without a hidden SQL maker exclusion',async()=>{
+  const x=setup();x.tx.payrollPaymentBatch.findFirst.mockResolvedValue({id:'payment',payrollBatchId:'cycle',status:'PREPARED',currency:'ZAR',employeeCount:1,totalAmount:100.01,preparedByUserId:actor.sub} as any);
+  await x.service.approveForExport('org','payment',actor);
+  expect(x.tx.payrollPaymentBatch.updateMany).toHaveBeenCalledWith(expect.objectContaining({where:{id:'payment',organizationId:'org',status:'PREPARED'},data:expect.objectContaining({approvedForExportByUserId:actor.sub})}));
+  expect(x.audit.log).toHaveBeenCalledWith(expect.objectContaining({actorUserId:actor.sub,action:'PAYROLL_PAYMENT_BATCH_APPROVED_FOR_EXPORT'}),x.tx);
+ });
+
 });

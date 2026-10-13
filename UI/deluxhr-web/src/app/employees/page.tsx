@@ -152,7 +152,7 @@ export default function EmployeesPage() {
   async function approve(ids: string[]) {
     if (
       !window.confirm(
-        `Approve ${ids.length} employees after independent review?`,
+        `Approve ${ids.length} employees after authorised review?`,
       )
     )
       return;
@@ -318,8 +318,7 @@ export default function EmployeesPage() {
           )}
         </div>
         <p className="text-sm mb-3">
-          Select pending employees for approval. Active employees do not need approval. Review profiles and documents first. Creators cannot approve
-          their own employees.
+          Select pending employees for approval. Active employees do not need approval. Review profiles and documents first. The same authorised administrator can approve employees they created.
         </p>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">

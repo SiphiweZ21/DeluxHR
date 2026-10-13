@@ -110,7 +110,7 @@ export default function PayrollSetup() {
         payFrequency: settings.payFrequency,
         uifRegistered: settings.uifRegistered,
         sdlApplicable: settings.sdlApplicable,
-        approvalMode: settings.approvalMode,
+        approvalMode: 'SINGLE_APPROVER',
       });
 
       setMessage('Payroll settings saved.');
@@ -270,7 +270,7 @@ export default function PayrollSetup() {
             <Field label="Payroll approval">
               <select
                 className="input"
-                value={settings.approvalMode}
+                value="SINGLE_APPROVER"
                 onChange={(e) =>
                   setSettings({
                     ...settings,
@@ -281,11 +281,7 @@ export default function PayrollSetup() {
                 }
               >
                 <option value="SINGLE_APPROVER">
-                  Single approver
-                </option>
-
-                <option value="MAKER_CHECKER">
-                  Maker / checker
+                  Single authorised administrator
                 </option>
               </select>
             </Field>

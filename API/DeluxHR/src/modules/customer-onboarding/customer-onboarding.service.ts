@@ -413,9 +413,9 @@ export class CustomerOnboardingService {
           where: { id, organizationId: a.organizationId },
         });
         if (!d) throw new NotFoundException('Company document not found.');
-        if (d.status !== 'PENDING_VERIFICATION' || d.uploadedBy === a.sub)
+        if (d.status !== 'PENDING_VERIFICATION')
           throw new BadRequestException(
-            'Independent review of a pending company document required.',
+            'A pending company document is required for review.',
           );
         const changed = await tx.companyOnboardingDocument.updateMany({
           where: {

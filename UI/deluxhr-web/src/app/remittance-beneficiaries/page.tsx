@@ -7,7 +7,7 @@ export default function BeneficiariesPage() {
       <PageTitle
         eyebrow="Company & access"
         title="Remittance beneficiaries"
-        text="Set up independently approved creditor accounts and statutory payment routes."
+        text="Set up approved creditor accounts and statutory payment routes."
       />
       <RemittanceBeneficiaries />
     </div>

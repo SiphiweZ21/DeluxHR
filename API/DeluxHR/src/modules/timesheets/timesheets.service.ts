@@ -196,9 +196,7 @@ export class TimesheetsService {
     const approval = await this.prisma.overtimeApproval.findFirst({ where: { id, organizationId: user.organizationId }, include: { timesheet: true } });
     if (!approval) throw new NotFoundException('Overtime request not found');
     const employee = await this.prisma.employee.findFirst({ where: { id: approval.employeeId, organizationId: user.organizationId }, select: { userId: true } });
-    if (approval.timesheet.submittedByUserId === user.sub || employee?.userId === user.sub) throw new ForbiddenException('You cannot review your own overtime submission.');
-    const ownAdjustment = await this.prisma.timesheetAdjustment.findFirst({ where: { timesheetId: approval.timesheetId, actorUserId: user.sub } });
-    if (ownAdjustment) throw new ForbiddenException('Another authorised reviewer must review overtime you prepared.');
+
     await this.unlocked(user.organizationId, approval.timesheet.periodStart, approval.timesheet.periodEnd);
     if (['APPROVED','LOCKED'].includes(approval.timesheet.status)) throw new ConflictException('Reviewed or locked timesheets cannot change overtime approvals.');
     if (status === OvertimeApprovalStatus.APPROVED && (!Number.isInteger(minutes) || minutes! < 0 || minutes! > approval.requestedMinutes)) throw new BadRequestException('Approved minutes must be within the request');
@@ -215,9 +213,7 @@ export class TimesheetsService {
     if (!allowed[sheet.status]?.includes(next)) throw new ConflictException('Invalid timesheet status transition');
     if ([TimesheetStatus.APPROVED, TimesheetStatus.REJECTED].includes(next as any)) {
       const employee = await this.prisma.employee.findFirst({ where: { id: sheet.employeeId, organizationId: user.organizationId }, select: { userId: true } });
-      const ownAdjustment = await this.prisma.timesheetAdjustment.findFirst({ where: { timesheetId: sheet.id, actorUserId: user.sub } });
-      if (ownAdjustment) throw new ForbiddenException('Another authorised user must review a timesheet you prepared.');
-      if (sheet.submittedByUserId === user.sub || employee?.userId === user.sub) throw new ForbiddenException("You cannot review your own timesheet submission. Another authorised operations or executive user must review it.");
+
     }
     if (next === TimesheetStatus.APPROVED) {
       const pending = sheet.entries.some(entry => entry.overtimeHours > 0 && entry.overtimeApproval?.status === OvertimeApprovalStatus.PENDING);

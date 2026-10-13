@@ -540,11 +540,6 @@ export class PayrollPaymentsService {
           );
         }
 
-        if (paymentBatch.preparedByUserId === actor.sub) {
-          throw new BadRequestException(
-            'The user who prepared the payment batch cannot approve the same batch for export.',
-          );
-        }
 
         const approvedAt = new Date();
 
@@ -553,9 +548,6 @@ export class PayrollPaymentsService {
             id: paymentBatchId,
             organizationId,
             status: PayrollPaymentBatchStatus.PREPARED,
-            preparedByUserId: {
-              not: actor.sub,
-            },
           },
           data: {
             status: PayrollPaymentBatchStatus.APPROVED_FOR_EXPORT,

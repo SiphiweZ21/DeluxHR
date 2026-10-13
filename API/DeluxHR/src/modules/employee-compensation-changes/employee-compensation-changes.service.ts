@@ -278,11 +278,6 @@ export class EmployeeCompensationChangesService {
       compensationChangeId,
     );
 
-    if (change.requestedByUserId === actor.id) {
-      throw new ForbiddenException(
-        'The user who requested a compensation change cannot approve it',
-      );
-    }
 
     return this.prisma.$transaction(async (tx) => {
       const current = await tx.employeeCompensationChange.findFirst({
@@ -361,11 +356,6 @@ export class EmployeeCompensationChangesService {
       compensationChangeId,
     );
 
-    if (change.requestedByUserId === actor.id) {
-      throw new ForbiddenException(
-        'The user who requested a compensation change cannot reject it',
-      );
-    }
 
     const normalizedReason = reason.trim();
 

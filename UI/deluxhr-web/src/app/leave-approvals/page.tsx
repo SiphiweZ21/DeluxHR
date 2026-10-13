@@ -20,7 +20,7 @@ function ApprovalQueue() {
     void getEmployees().then(setEmployees).catch(() => {});
     void getLeaveTypes().then(setTypes).catch(() => {});
   }, []);
-  return <Card title="Steps ready for your review"><Notice error={action.error} message={action.message}/><p className="text-sm text-slate-500">Only steps assigned to you or delegated to you are shown, after earlier steps are approved. The API returns up to 200 candidates; refresh after each decision.</p><button disabled={action.busy} className={secondary} onClick={() => void action.run(load)}>Refresh queue</button>{loading ? <Empty>Loading approval queue…</Empty> : !items.length ? <Empty>No approval steps ready for you.</Empty> : items.map(item => <QueueDecision key={item.id} item={item} employees={employees} types={types} onSaved={load}/>)}</Card>;
+  return <Card title="Steps ready for your review"><Notice error={action.error} message={action.message}/><p className="text-sm text-slate-500">Authorised HR admins can review company approval steps; team approvers see their assigned or delegated steps. Earlier steps must be completed first. The API returns up to 200 candidates; refresh after each decision.</p><button disabled={action.busy} className={secondary} onClick={() => void action.run(load)}>Refresh queue</button>{loading ? <Empty>Loading approval queue…</Empty> : !items.length ? <Empty>No approval steps ready for you.</Empty> : items.map(item => <QueueDecision key={item.id} item={item} employees={employees} types={types} onSaved={load}/>)}</Card>;
 }
 function QueueDecision({ item, employees, types, onSaved }: { item: api.ApprovalQueueItem; employees: Employee[]; types: LeaveType[]; onSaved: () => Promise<void> }) {
   const [comment, setComment] = useState(''); const action = useAction();

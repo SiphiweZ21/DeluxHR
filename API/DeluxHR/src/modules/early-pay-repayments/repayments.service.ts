@@ -603,9 +603,9 @@ export class EarlyPayRepaymentsService {
       async (tx, hash) => {
         await this.password(hash, d.password);
         const b = await this.batch(tx, id, a.organizationId);
-        if (b.status !== 'PREPARED' || b.preparedBy === a.sub)
+        if (b.status !== 'PREPARED')
           throw new BadRequestException(
-            'An independent company approver must release a prepared batch.',
+            'An authorised company approver must release a prepared batch.',
           );
         await this.liveAccounts(tx, b);
         await tx.earlyPayRepaymentBatch.update({

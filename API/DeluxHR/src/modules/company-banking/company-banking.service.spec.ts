@@ -179,7 +179,7 @@ describe('Company banking profiles', () => {
       expect(tx.companyBankingProfile.create).not.toHaveBeenCalled();
     },
   );
-  it('forbids self approval', async () => {
+  it('allows same-admin review with password and audit', async () => {
     const { service, tx } = setup();
     tx.companyBankingProfile.findFirst.mockResolvedValue({
       ...base,
@@ -191,8 +191,8 @@ describe('Company banking profiles', () => {
         password: 'secret',
         reason: 'Checked bank evidence',
       }),
-    ).rejects.toThrow(ForbiddenException);
-    expect(tx.companyBankingProfile.update).not.toHaveBeenCalled();
+    ).resolves.toMatchObject({status:'APPROVED'});
+    expect(tx.auditLog.create).toHaveBeenCalled();
   });
   it('rejects wrong checker password', async () => {
     const { service, tx } = setup();
@@ -337,7 +337,7 @@ describe('Company banking profiles', () => {
     );
     expect(tx.companyBankingProfile.update).not.toHaveBeenCalled();
   });
-  it('denies inspection with wrong password, by maker or after approval', async () => {
+  it('denies inspection with wrong password or after approval, allowing the maker', async () => {
     const { service, tx } = setup();
     (comparePassword as jest.Mock).mockResolvedValue(false);
     await expect(
@@ -346,6 +346,7 @@ describe('Company banking profiles', () => {
         reason: 'Compare bank evidence',
       }),
     ).rejects.toThrow(BadRequestException);
+    (comparePassword as jest.Mock).mockResolvedValue(true);
     tx.companyBankingProfile.findFirst.mockResolvedValue({
       ...base,
       createdByUserId: 'checker',
@@ -355,7 +356,7 @@ describe('Company banking profiles', () => {
         password: 'secret',
         reason: 'Compare bank evidence',
       }),
-    ).rejects.toThrow(ForbiddenException);
+    ).resolves.toMatchObject({accountNumber:base.accountNumber});
     tx.companyBankingProfile.findFirst.mockResolvedValue({
       ...base,
       status: 'APPROVED',
@@ -366,7 +367,7 @@ describe('Company banking profiles', () => {
         reason: 'Compare bank evidence',
       }),
     ).rejects.toThrow(BadRequestException);
-    expect(tx.auditLog.create).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).toHaveBeenCalledTimes(1);
   });
   it('propagates audit failure through the transaction rather than reporting success', async () => {
     const { service, tx } = setup();

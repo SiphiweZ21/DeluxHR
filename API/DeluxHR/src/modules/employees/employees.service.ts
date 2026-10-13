@@ -20,7 +20,6 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { assertPendingOnboardingChecker } from '../../common/auth/pending-onboarding-checker';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import type { TenantJwtUser } from '../../common/auth/jwt-user.type';
@@ -829,7 +828,7 @@ export class EmployeesService {
       if (change.status !== 'PENDING') throw new BadRequestException('Change already reviewed');
       const employee = await tx.employee.findFirst({ where: { id: change.employeeId, organizationId: actor.organizationId } });
       if (!employee) throw new NotFoundException('Employee not found');
-      if (change.submittedByUserId === actor.sub || employee.userId === actor.sub) throw new ForbiddenException('You cannot review your own employee change. Another authorised HR or executive user must review it.');
+
       if (status === 'REJECTED' && (!reason || reason.trim().length < 3)) throw new BadRequestException('Provide a rejection reason.');
       if (status === 'APPROVED') {
         if (employee.updatedAt.getTime() !== change.baseUpdatedAt.getTime()) throw new BadRequestException('Employee details changed since submission. Reject this change and submit an updated proposal.');
@@ -1151,16 +1150,14 @@ export class EmployeesService {
     db: Prisma.TransactionClient | PrismaService = this.prisma,
     onboarding = false,
   ) {
+    const reviewer = await db.user.findUnique({where:{id:actor.sub},select:{id:true,isActive:true,organizationId:true,role:true}});
+    if (!reviewer?.isActive || reviewer.organizationId !== organizationId || reviewer.role !== actor.role || [UserRole.SUPER_ADMIN,UserRole.PLATFORM_ADMIN].includes(reviewer.role as any)) throw new ForbiddenException('An active authorised tenant reviewer is required. Refresh your account access.');
     if (!employee.createdByUserId) {
       throw new BadRequestException(
         'Employee creator information is missing. This legacy employee requires an administrative review before activation.',
       );
     }
-    if (employee.createdByUserId === actor.sub || employee.lastSubmittedByUserId === actor.sub || employee.userId === actor.sub) {
-      throw new ForbiddenException(
-        'The user who created the employee cannot activate the same employee',
-      );
-    }
+
     const maker = await db.user.findUnique({
       where: {
         id: employee.createdByUserId,
@@ -1186,11 +1183,7 @@ export class EmployeesService {
     }
     if (!onboarding && maker.role === UserRole.COMPANY_ADMIN && actor.role === UserRole.COMPANY_ADMIN) {
       const organization = await db.organization.findUnique({ where: { id: organizationId }, select: { status: true } });
-      if (organization?.status !== 'ACTIVE') throw new ForbiddenException('Pending company approval must use the independent onboarding checker flow.');
-    }
-    if (onboarding && maker.role === UserRole.COMPANY_ADMIN && actor.role === UserRole.COMPANY_ADMIN) {
-      await assertPendingOnboardingChecker(db as Prisma.TransactionClient, organizationId, maker.id, actor.sub);
-      return { ...maker, onboardingIndependentAdmin: true };
+      if (organization?.status !== 'ACTIVE') throw new ForbiddenException('Pending company approval must use the onboarding review route.');
     }
     return { ...maker, onboardingIndependentAdmin: false };
   }

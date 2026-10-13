@@ -37,7 +37,7 @@ export function EmployeeDocumentsSetup() {
       <Notice error={action.error} message={action.message} />
       <p className="text-sm text-slate-500">
         Private PDF, PNG or JPEG files, up to 10 MB. Uploads are pending
-        verification. A second administrator can download, inspect and verify or
+        verification. An authorised administrator can download, inspect and verify or
         reject them. Store identity, employment contracts, banking proof and
         other employee records here. Uploading banking proof does not approve
         payment details.
@@ -141,7 +141,7 @@ export function EmployeeDocumentsSetup() {
                   Download privately
                 </button>
                 {d.status === "PENDING_VERIFICATION" &&
-                  d.uploadedByUserId !== getUser()?.id && (
+                  (
                     <>
                       <button
                         disabled={action.busy}
@@ -357,7 +357,7 @@ export function CompanyDocumentsSetup() {
                   verification adds this employer liability to the selected
                   month's register. It does not calculate fees or mark payment
                   as made. Use Payroll Liabilities &amp; Remittances for payment
-                  preparation with an independently approved beneficiary.
+                  preparation with an approved beneficiary.
                 </p>
               </>
             )}
@@ -442,7 +442,6 @@ export function CompanyDocumentsSetup() {
               Download privately
             </button>
             {d.status === "PENDING_VERIFICATION" &&
-              d.uploadedBy !== getUser()?.id &&
               (["VERIFIED", "REJECTED"] as const).map((status) => (
                 <button
                   key={status}

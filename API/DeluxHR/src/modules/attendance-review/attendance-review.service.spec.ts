@@ -225,7 +225,7 @@ describe('Attendance review and notifications', () => {
       'sequence has changed',
     );
   });
-  it('blocks approving your own attempt', async () => {
+  it('allows authorised review of an own attempt', async () => {
     const x = fixture('REVIEW', true);
     await x.service.capture(actor, x.dto);
     await expect(
@@ -233,7 +233,7 @@ describe('Attendance review and notifications', () => {
         action: 'ACCEPT',
         reason: 'Valid reassignment',
       }),
-    ).rejects.toThrow('Another authorised');
+    ).resolves.toMatchObject({status:'CONFIRMED'});
   });
   it('accepts a pending attempt only through another authorised reviewer', async () => {
     const x = fixture('REVIEW', true);

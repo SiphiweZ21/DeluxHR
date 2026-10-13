@@ -45,7 +45,7 @@ export default function Page() {
       <PageTitle
         eyebrow="Payroll & payments"
         title="Payroll payment batches"
-        text="Freeze funding details, independently approve release and review files."
+        text="Freeze funding details, approve release and review files. The same authorised admin can prepare and approve."
       />
       <Notice error={action.error} message={action.message} />
       <Card title="Bank export readiness">
@@ -76,7 +76,7 @@ export default function Page() {
                 setSelected(await api.getPaymentBatch(result.id));
                 setCheck(null);
                 setBatches(await api.listPaymentBatches());
-              }, "Payment batch prepared. A different authorized user must approve release.");
+              }, "Payment batch prepared. An authorised user must approve release; the preparer can do this.");
             }}
           >
             <Field label="Locked payroll cycle">

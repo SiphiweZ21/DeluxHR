@@ -294,7 +294,7 @@ describe('External remittances coexist with preparation reservations', () => {
     ).rejects.toThrow('reserved');
     expect(x.tx.payrollLiabilityAdjustment.create).not.toHaveBeenCalled();
   });
-  it('requires a different user and a substantive reason for confirmation and voiding', async () => {
+  it('allows same-admin confirmation/voiding with a substantive reason', async () => {
     for (const status of ['CONFIRMED', 'VOIDED']) {
       const x = setup();
       x.tx.payrollRemittancePayment.findFirst.mockResolvedValue({
@@ -302,9 +302,9 @@ describe('External remittances coexist with preparation reservations', () => {
         status: 'RECORDED',
         createdByUserId: actor.sub,
       });
-      await expect(
-        x.s.decide(actor, 'payment', status, 'Checked payment'),
-      ).rejects.toThrow('different user');
+      jest.spyOn(x.s as any,'bucket').mockResolvedValue({outstandingCents:10000,reservedCents:0});
+      await x.s.decide(actor, 'payment', status, 'Checked payment');
+      expect(x.tx.payrollRemittancePayment.updateMany).toHaveBeenCalled();
       const y = setup();
       y.tx.payrollRemittancePayment.findFirst.mockResolvedValue({
         id: 'payment',

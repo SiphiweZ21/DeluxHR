@@ -550,7 +550,7 @@ function PaymentRow({
         </p>
       )}
       <Notice error={action.error} message={action.message} />
-      {p.status === "RECORDED" && manage && actor !== p.createdByUserId && (
+      {p.status === "RECORDED" && manage && (
         <form
           className="space-y-3 border-t border-slate-100 pt-3"
           onSubmit={(e) => {

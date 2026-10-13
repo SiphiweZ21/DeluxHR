@@ -562,7 +562,6 @@ export default function RemittancePaymentsPage() {
             )}
             <div className="flex flex-wrap gap-2">
               {batch.status === "PREPARED" &&
-                batch.preparedBy !== actor &&
                 allowed("APPROVE_PAYROLL_PAYMENTS") && (
                   <button
                     className={button}
@@ -607,8 +606,6 @@ export default function RemittancePaymentsPage() {
                   </button>
                 )}
               {batch.status === "SUBMITTED" &&
-                batch.preparedBy !== actor &&
-                batch.submittedBy !== actor &&
                 allowed("APPROVE_PAYROLL_PAYMENTS") && (
                   <button
                     className={button}

@@ -189,10 +189,7 @@ export class CompanyBankingService {
       const p = await this.profile(tx, actor, id);
       if (p.status !== 'PENDING_APPROVAL')
         throw new BadRequestException('Only pending profiles can be reviewed.');
-      if (p.createdByUserId === actor.sub)
-        throw new ForbiddenException(
-          'A different company administrator must review this profile.',
-        );
+
       if (!(await comparePassword(dto.password, checker.passwordHash)))
         throw new BadRequestException('Current password is incorrect.');
       const result = await tx.companyBankingProfile.update({
@@ -225,10 +222,7 @@ export class CompanyBankingService {
         throw new BadRequestException(
           'Only pending profiles can be inspected for review.',
         );
-      if (p.createdByUserId === actor.sub)
-        throw new ForbiddenException(
-          'A different company administrator must inspect this profile for review.',
-        );
+
       if (!(await comparePassword(dto.password, checker.passwordHash)))
         throw new BadRequestException('Current password is incorrect.');
       await this.audit(tx, actor, p.id, 'BANKING_ACCOUNT_INSPECTED', reason, {
@@ -272,7 +266,7 @@ export class CompanyBankingService {
       const p = await this.profile(tx, actor, dto.profileId);
       if (p.status !== 'APPROVED')
         throw new BadRequestException(
-          'Choose an independently approved profile.',
+          'Choose an approved profile.',
         );
       const key = {
         organizationId: actor.organizationId,

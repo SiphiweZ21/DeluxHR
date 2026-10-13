@@ -519,11 +519,10 @@ describe('Employer repayment preparation and company controls', () => {
       'Payroll',
     );
   });
-  it('rejects maker release and incorrect passwords', async () => {
+  it('allows company maker release while rejecting incorrect passwords', async () => {
     const h = setup();
-    await expect(h.service.approve(maker, 'batch', auth)).rejects.toThrow(
-      'independent',
-    );
+    await h.service.approve(maker, 'batch', auth);
+    h.tx.earlyPayRepaymentBatch.update.mockClear();
     await expect(
       h.service.approve(checker, 'batch', { ...auth, password: 'wrong' }),
     ).rejects.toThrow('Password');

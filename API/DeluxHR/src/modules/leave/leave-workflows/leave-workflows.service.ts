@@ -80,7 +80,8 @@ export class LeaveWorkflowsService {
    const today = calendarDate(new Date().toISOString().slice(0,10));
    const delegated = await this.prisma.leaveApprovalDelegation.findMany({ where: { organizationId: user.organizationId, toUserId: user.sub, effectiveFrom: { lte: today }, effectiveTo: { gte: today } }, select: { fromUserId: true } });
    const ids = [user.sub,...delegated.map(d=>d.fromUserId)];
-   const items = await this.prisma.leaveApprovalDecision.findMany({ where: { status: LeaveDecisionStatus.PENDING, request: { organizationId: user.organizationId, status: 'PENDING' }, step: { approverUserId: { in: ids } } }, include: { step: true, request: { include: { decisions: { include: { step: true } } } } }, take: 200 });
+   const companyApprover = await this.access.hasPermission(user, Permission.APPROVE_LEAVE);
+   const items = await this.prisma.leaveApprovalDecision.findMany({ where: { status: LeaveDecisionStatus.PENDING, request: { organizationId: user.organizationId, status: 'PENDING' }, ...(companyApprover ? {} : {step: { approverUserId: { in: ids } }}) }, include: { step: true, request: { include: { decisions: { include: { step: true } } } } }, take: 200 });
    return items.filter(item => priorStepsApproved(item.request.decisions.map(d => ({ order: d.step.order, status: d.status })),item.step.order));
  }
  async decide(user: TenantJwtUser, id: string, dto: DecisionDto) {
@@ -91,10 +92,10 @@ export class LeaveWorkflowsService {
    const expected = decision.step.approverUserId;
    const today = calendarDate(new Date().toISOString().slice(0,10));
    const delegate = expected !== user.sub && await this.prisma.leaveApprovalDelegation.findFirst({ where: { organizationId: user.organizationId, fromUserId: expected, toUserId: user.sub, effectiveFrom: { lte: today }, effectiveTo: { gte: today } } });
-   if (expected !== user.sub && !delegate) throw new ForbiddenException('Approval step is not assigned to you');
-   if (decision.request.employee.userId === user.sub || decision.request.submittedByUserId === user.sub) throw new ForbiddenException('You cannot approve your own leave');
+   if (expected !== user.sub && !delegate && !(await this.access.hasPermission(user, Permission.APPROVE_LEAVE))) throw new ForbiddenException('Approval step is not assigned to you');
+
    const required = decision.step.kind === LeaveApproverKind.MANAGER ? Permission.APPROVE_TEAM_LEAVE : Permission.APPROVE_LEAVE;
-   if (!(await this.access.hasPermission(user,required))) throw new ForbiddenException('Approver permission required');
+   if (!(await this.access.hasPermission(user,required)) && !(await this.access.hasPermission(user,Permission.APPROVE_LEAVE))) throw new ForbiddenException('Approver permission required');
    if (decision.status !== LeaveDecisionStatus.PENDING || decision.request.status !== 'PENDING') throw new ConflictException('Approval step is closed');
    if (!priorStepsApproved(decision.request.decisions.map(d => ({ order: d.step.order, status: d.status })),decision.step.order)) throw new ConflictException('Earlier approval steps must finish first');
    const policy = await this.policy.policyFor(user.organizationId,decision.request.employeeId,decision.request.leaveTypeId,decision.request.startDate);
@@ -168,7 +169,7 @@ export class LeaveWorkflowsService {
    const change = await this.prisma.leaveChangeRequest.findFirst({ where: { id, request: { organizationId: user.organizationId } }, include: { request: true } });
    if (!change) throw new NotFoundException('Leave change not found');
    const employee = await this.prisma.employee.findFirst({ where: { id: change.request.employeeId, organizationId: user.organizationId }, select: { userId: true } });
-   if (change.requestedByUserId === user.sub || employee?.userId === user.sub) throw new ForbiddenException('You cannot review your own leave change.');
+
    if (change.status !== LeaveChangeStatus.PENDING) throw new ConflictException('Change already reviewed');
    const request = change.request;
    const oldBreakdown = (request.chargeBreakdown ?? {}) as Record<string,number>;

@@ -265,9 +265,9 @@ export class RemittancePaymentsService {
     return this.mutation(a, null, async (tx, hash) => {
       await this.password(hash, d.password);
       const p = await this.profile(tx, a, id);
-      if (p.status !== 'PENDING_APPROVAL' || p.createdBy === a.sub)
+      if (p.status !== 'PENDING_APPROVAL')
         throw new BadRequestException(
-          'Independent pending-beneficiary review required.',
+          'A pending beneficiary is required for review.',
         );
       await this.log(tx, a, id, 'BENEFICIARY_INSPECTED', d.reason);
       return p;
@@ -277,9 +277,9 @@ export class RemittancePaymentsService {
     return this.mutation(a, null, async (tx, hash) => {
       await this.password(hash, d.password);
       const p = await this.profile(tx, a, id);
-      if (p.status !== 'PENDING_APPROVAL' || p.createdBy === a.sub)
+      if (p.status !== 'PENDING_APPROVAL')
         throw new BadRequestException(
-          'Independent pending-beneficiary review required.',
+          'A pending beneficiary is required for review.',
         );
       if (d.decision === 'APPROVED' && p.route !== 'BANK_TRANSFER') {
         const existing = await tx.remittanceBeneficiary.findMany({
@@ -529,9 +529,9 @@ export class RemittancePaymentsService {
       async (tx, hash) => {
         await this.password(hash, d.password);
         const b = await this.batch(tx, a, id);
-        if (b.status !== 'PREPARED' || b.preparedBy === a.sub)
+        if (b.status !== 'PREPARED')
           throw new BadRequestException(
-            'Independent release approval of a prepared batch required.',
+            'Release approval of a prepared batch required.',
           );
         await this.live(tx, a, b);
         await tx.remittancePaymentBatch.update({
@@ -648,10 +648,7 @@ export class RemittancePaymentsService {
       async (tx, hash) => {
         await this.password(hash, d.password);
         const b = await this.batch(tx, a, id);
-        if (a.sub === b.preparedBy || a.sub === b.submittedBy)
-          throw new BadRequestException(
-            'Independent bank-result checker required.',
-          );
+
         const status = d.outcome === 'MISMATCH' ? 'EXCEPTION' : d.outcome;
         if (
           b.status === status &&

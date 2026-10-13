@@ -22,7 +22,7 @@ describe('employee profile update regressions', () => {
     expect(db.employeeProfileChange.create.mock.calls[0][0].data.proposed).toMatchObject({ departmentId: 'new', positionId: 'new-position' });
     expect(db.employee.update).not.toHaveBeenCalled();
   });
-  it('applies the new department and role after independent approval', async () => {
+  it('applies the new department and role after authorised approval', async () => {
     const { employee, db, service } = fixture();
     db.employeeProfileChange.findFirst.mockResolvedValue({ id: 'change', employeeId: employee.id, status: 'PENDING', submittedByUserId: actor.sub, baseUpdatedAt: employee.updatedAt, proposed: { departmentId: 'new', positionId: 'new-position', jobTitle: 'New role' } });
     await service.reviewProfileChange({ ...actor, sub: 'checker' }, 'change', 'APPROVED');
@@ -40,11 +40,11 @@ describe('employee profile update regressions', () => {
     await expect(service.update('org', 'employee', { departmentId: 'new', positionId: 'foreign-position' }, actor)).rejects.toThrow('destination department');
     expect(db.employeeProfileChange.create).not.toHaveBeenCalled();
   });
-  it('prevents the submitter from approving their change', async () => {
+  it('allows the authorised submitter to approve their change', async () => {
     const { employee, db, service } = fixture();
-    db.employeeProfileChange.findFirst.mockResolvedValue({ employeeId: employee.id, status: 'PENDING', submittedByUserId: actor.sub });
-    await expect(service.reviewProfileChange(actor, 'change', 'APPROVED')).rejects.toThrow('own employee change');
-    expect(db.employee.update).not.toHaveBeenCalled();
+    db.employeeProfileChange.findFirst.mockResolvedValue({ employeeId: employee.id, status: 'PENDING', submittedByUserId: actor.sub, baseUpdatedAt:employee.updatedAt, proposed:{departmentId:'new'} });
+    await service.reviewProfileChange(actor, 'change', 'APPROVED');
+    expect(db.employee.update).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({departmentId:'new'})}));
   });
 });
 it('returns package details immediately after subscription assignment', async () => {
