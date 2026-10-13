@@ -1,6 +1,7 @@
 import { workforceRequest as request, getAuthHeaders, handleResponse, type LeaveRequest } from './api';
 
 export type NewLeavePolicy = {
+  balanceRequired?: boolean;
   leaveTypeId: string; code: string; name: string; isDefault: boolean;
   annualEntitlementDays: number; accrualMode: 'ANNUAL_UPFRONT' | 'MONTHLY';
   carryOverMaxDays: number; carryOverExpiryMonths: number; maxNegativeDays: number;

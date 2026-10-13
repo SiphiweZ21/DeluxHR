@@ -1,5 +1,6 @@
 'use client';
 
+import {AttendanceReview} from '../../components/attendance/review';
 import { useEffect, useState } from 'react';
 import { getAttendanceExceptions, resolveAttendanceException, scanAttendanceSchedules, type AttendanceException, type AttendanceExceptionPage } from '../../lib/api';
 const today = () => new Date().toISOString().slice(0, 10);
@@ -24,7 +25,7 @@ export default function AttendanceExceptionsPage() {
     finally { setBusy(false); }
   }
   const rows = result?.exceptions ?? [];
-  return <div className="space-y-6 pb-8">
+  return <div className="space-y-6 pb-8"><AttendanceReview/>
     <div><p className="text-xs font-bold uppercase tracking-widest text-indigo-600">Attendance review</p><h1 className="mt-2 text-3xl font-semibold text-slate-950">Attendance exceptions</h1><p className="mt-2 text-sm text-slate-600">Review late arrivals, missing check-ins and check-outs, expected absences and site mismatches. An exception does not itself change payroll.</p></div>
     {error && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">{error}</p>}{message && <p role="status" className="rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">{message}</p>}
     <section className="flex flex-wrap items-end gap-3 rounded-2xl border bg-white p-5"><div><h2 className="font-semibold">Scan schedules</h2><p className="text-xs text-slate-500">Detect missing and late attendance for selected days.</p></div><label className="text-sm">From<input type="date" value={from} onChange={e => setFrom(e.target.value)} className="mt-1 block rounded-lg border p-2" /></label><label className="text-sm">To<input type="date" min={from} value={to} onChange={e => setTo(e.target.value)} className="mt-1 block rounded-lg border p-2" /></label><button disabled={busy || !from || !to || from > to} onClick={() => run(() => scanAttendanceSchedules(from, to), 'Schedule scan completed.')} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Run scan</button></section>

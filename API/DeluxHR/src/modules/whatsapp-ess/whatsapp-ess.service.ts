@@ -1,4 +1,4 @@
-import { buildWhatsAppMenu, validMenuId, type EssReply, type MenuCategory } from './whatsapp-menu';
+import { buildWhatsAppMenu, validMenuId, actionMessage, dateLabel, timeLabel, leaveActions, attendanceActions, type EssReply, type MenuCategory } from './whatsapp-menu';
 import {
   BadRequestException,
   ConflictException,
@@ -39,6 +39,7 @@ type Flow = {
   eventType?: AttendanceEventType;
   requestedAt?: string;
   kind:
+    | 'ATTEMPT_EXPLANATION'
     | 'CLOCK_LOCATION'
     | 'LEAVE_TYPE'
     | 'LEAVE_START'
@@ -48,6 +49,7 @@ type Flow = {
     | 'HR_SUMMARY'
     | 'EARLY_AMOUNT'
     | 'EARLY_CONFIRM';
+  attemptId?: string;
   leaveTypeId?: string;
   startDate?: string;
   amount?: number;
@@ -312,6 +314,10 @@ export class WhatsAppEssService {
       await this.setFlow(session.id, null);
       flow = null;
       if (text.startsWith('WA_MENU_')) return this.menu(actor.organizationId, text.slice(8) as MenuCategory);
+      if (text.startsWith('WA_TYPES_')) { const parts=text.split('_'); await this.setFlow(session.id,{kind:parts[2]==='BALANCE'?'BALANCE_TYPE':'LEAVE_TYPE'}); return this.leaveTypes(actor.organizationId, parts[2] as 'BALANCE'|'REQUEST', Number(parts[3])); }
+      if (text.startsWith('WA_TYPE_')) { const parts=text.split('_'); await this.setFlow(session.id,{kind:parts[2]==='BALANCE'?'BALANCE_TYPE':'LEAVE_TYPE'}); return this.selectedLeaveType(employee, actor, session.id, parts[2] as 'BALANCE'|'REQUEST',parts[3]); }
+      if (text.startsWith('WA_REQUEST_')) return this.selectedLeaveType(employee,actor,session.id,'REQUEST',text.slice(11));
+      if (text.startsWith('WA_ATTEMPT_EXPLAIN_')) { const attemptId=text.slice(19); const attempt=await this.prisma.attendanceAttempt.findFirst({where:{id:attemptId,organizationId:actor.organizationId,employeeId:employee.id,submittedByUserId:actor.sub,status:'PENDING'}}); if(!attempt)return actionMessage('Attendance review','This attempt is no longer awaiting your explanation.',attendanceActions);await this.setFlow(session.id,{kind:'ATTEMPT_EXPLANATION',attemptId});return actionMessage('📝 Explain your location','Tell your supervisor why you checked in at this location (5–1000 characters).',[{id:'WA_MENU_ATTENDANCE',title:'Cancel'},{id:'WA_MENU_HOME',title:'Main menu'}]); }
       text = text.slice(10);
     }
     if (text.toLowerCase() === '0' || text.toLowerCase() === 'menu') {
@@ -328,7 +334,7 @@ export class WhatsAppEssService {
         messageId,
       );
     if (location)
-      return 'Choose 6 to clock in or 7 to clock out before sharing your current location.';
+      return actionMessage('📍 Attendance','Choose 6 to clock in or 7 to clock out before sharing your current location.',attendanceActions);
     if (flow) return this.flow(employee, actor, session.id, flow, text);
     const org = employee.organizationId,
       id = employee.id;
@@ -348,7 +354,7 @@ export class WhatsAppEssService {
         await this.setFlow(session.id, {
           kind: text === '2' ? 'BALANCE_TYPE' : 'LEAVE_TYPE',
         });
-        return `Choose leave type: ${types.map((t, i) => `${i + 1} ${t.name}`).join(', ')}. Reply with its number.`;
+        return this.leaveTypes(org,text==='2'?'BALANCE':'REQUEST');
       }
       case '4': {
         if (!(await this.entitlements.hasFeature(org, Feature.LEAVE)))
@@ -358,9 +364,7 @@ export class WhatsAppEssService {
           orderBy: { createdAt: 'desc' },
           include: { leaveType: true },
         });
-        return item
-          ? `Latest leave: ${item.leaveType.name}, ${item.startDate.toISOString().slice(0, 10)} to ${item.endDate.toISOString().slice(0, 10)} — ${item.status}.`
-          : 'No leave request found.';
+        return item ? actionMessage('🌴 Latest leave request', `${item.leaveType.name}\nDates: ${dateLabel(item.startDate)} – ${dateLabel(item.endDate)}\nStatus: ${item.status==='PENDING'?'Awaiting approval':item.status==='APPROVED'?'Approved':'Rejected'}`,leaveActions) : actionMessage('🌴 Leave requests','No leave request found.',leaveActions);
       }
       case '5': {
         if (!(await this.entitlements.hasFeature(org, Feature.ATTENDANCE)))
@@ -369,9 +373,8 @@ export class WhatsAppEssService {
           where: { organizationId: org, employeeId: id },
           orderBy: { capturedAt: 'desc' },
         });
-        return event
-          ? `Latest attendance: ${event.eventType.replace('_', ' ')} at ${event.capturedAt.toISOString()}.`
-          : 'No attendance event found.';
+        const attempt=await this.prisma.attendanceAttempt.findFirst({where:{organizationId:org,employeeId:id,...(event?{capturedAt:{gte:event.capturedAt}}:{})},orderBy:{capturedAt:'desc'}});
+        return attempt&&attempt.status!=='CONFIRMED' ? actionMessage('📍 Latest attendance attempt',`${timeLabel(attempt.capturedAt,attempt.timezone)}\nStatus: ${attempt.status==='PENDING'?'Awaiting supervisor review':attempt.status==='REJECTED'?'Rejected':'Superseded'}\nThis attempt is not confirmed attendance.`,attendanceActions) : event ? actionMessage('📋 My attendance',`${event.eventType==='CHECK_IN'?'Clock-in':'Clock-out'} recorded\nTime: ${timeLabel(event.capturedAt)}\nChannel: ${event.channel.replaceAll('_',' ')}`,attendanceActions) : actionMessage('📋 My attendance','No attendance event found.',attendanceActions);
       }
       case '6':
       case '7': {
@@ -389,13 +392,13 @@ export class WhatsAppEssService {
           latest?.eventType === eventType ||
           (!latest && eventType === AttendanceEventType.CHECK_OUT)
         )
-          return 'Attendance sequence is not ready for that action. Contact your supervisor if a correction is needed.';
+          return actionMessage('⚠️ Attendance already recorded','Attendance sequence is not ready for that action. Check your latest attendance or contact your supervisor if a correction is needed.',attendanceActions);
         await this.setFlow(session.id, {
           kind: 'CLOCK_LOCATION',
           eventType,
           requestedAt: now.toISOString(),
         });
-        return `To ${eventType === AttendanceEventType.CHECK_IN ? 'clock in' : 'clock out'}, use WhatsApp Attach (+ / paperclip) > Location > Send your current location within 5 minutes. Reply 0 to cancel. Attendance is only recorded after you share a valid location.`;
+        return actionMessage(`📍 Share your location to ${eventType === AttendanceEventType.CHECK_IN ? 'clock in' : 'clock out'}`, '1. Tap Attach (+ / paperclip).\n2. Choose Location → Send your current location.\n\nSend it within 5 minutes. Attendance is recorded only after your location is accepted. Reply 0 to cancel.',[{id:'WA_MENU_ATTENDANCE',title:'Cancel'},{id:'WA_MENU_HOME',title:'Main menu'}]);
       }
       case '8': {
         if (!(await this.entitlements.hasFeature(org, Feature.ATTENDANCE))) return 'Attendance is not enabled for your company.';
@@ -487,11 +490,11 @@ export class WhatsAppEssService {
       requestedAt > now.getTime()
     ) {
       await this.setFlow(sessionId, null);
-      return 'Location request expired. Choose 6 or 7 again; no attendance was recorded.';
+      return actionMessage('📍 Attendance','Location request expired. Choose 6 or 7 again; no attendance was recorded.',attendanceActions);
     }
     if (!(await this.entitlements.hasFeature(org, Feature.ATTENDANCE))) {
       await this.setFlow(sessionId, null);
-      return 'Attendance is not enabled for your company.';
+      return actionMessage('📍 Attendance','Attendance is not enabled for your company.',attendanceActions);
     }
     if (
       !location ||
@@ -502,7 +505,7 @@ export class WhatsAppEssService {
       Math.abs(location.latitude) > 90 ||
       Math.abs(location.longitude) > 180
     )
-      return 'Send a valid location using Attach > Location > Send your current location, or reply 0 to cancel. No attendance was recorded.';
+      return actionMessage('📍 Attendance','Send a valid location using Attach > Location > Send your current location, or reply 0 to cancel. No attendance was recorded.',attendanceActions);
     const eventType = flow.eventType;
     if (
       ![AttendanceEventType.CHECK_IN, AttendanceEventType.CHECK_OUT].includes(
@@ -510,7 +513,7 @@ export class WhatsAppEssService {
       )
     ) {
       await this.setFlow(sessionId, null);
-      return 'Choose 6 or 7 again.';
+      return actionMessage('📍 Attendance','Choose 6 or 7 again.',attendanceActions);
     }
     const latest = await this.prisma.attendanceEvent.findFirst({
       where: { organizationId: org, employeeId: employee.id },
@@ -521,7 +524,7 @@ export class WhatsAppEssService {
       (!latest && eventType === AttendanceEventType.CHECK_OUT)
     ) {
       await this.setFlow(sessionId, null);
-      return 'Attendance sequence has changed. No attendance was recorded; contact your supervisor if a correction is needed.';
+      return actionMessage('📍 Attendance','Attendance sequence has changed. No attendance was recorded; contact your supervisor if a correction is needed.',attendanceActions);
     }
     const assignment =
       await this.prisma.employeeWorkLocationAssignment.findFirst({
@@ -545,9 +548,10 @@ export class WhatsAppEssService {
       data: { flow: Prisma.JsonNull },
     });
     if (!claimed.count)
-      return 'This location request was cancelled or already handled. Check option 5 or choose 6 or 7 again.';
+      return actionMessage('📍 Attendance','This location request was cancelled or already handled. Check option 5 or choose 6 or 7 again.',attendanceActions);
+    let captured: Awaited<ReturnType<AttendanceEventsService['create']>>;
     try {
-      await this.attendance.create(
+      captured = await this.attendance.create(
         org,
         {
           employeeId: employee.id,
@@ -566,7 +570,7 @@ export class WhatsAppEssService {
         actor,
       );
     } catch {
-      return 'Attendance capture could not be confirmed. Check option 5 before retrying, or contact your supervisor. Reply 0 to cancel.';
+      return actionMessage('📍 Attendance','Attendance capture could not be confirmed. Check option 5 before retrying, or contact your supervisor. Reply 0 to cancel.',attendanceActions);
     }
     await this.auditAction(
       actor,
@@ -575,7 +579,10 @@ export class WhatsAppEssService {
         ? 'WHATSAPP_ESS_CLOCK_IN'
         : 'WHATSAPP_ESS_CLOCK_OUT',
     );
-    return `${eventType === AttendanceEventType.CHECK_IN ? 'Clock-in' : 'Clock-out'} recorded at ${now.toISOString()} with your shared location.`;
+    const result = captured as typeof captured & {attendanceStatus?:string;attemptId?:string;lateMinutes?:number;timezone?:string;siteName?:string|null;reason?:string;distanceM?:number|null};
+    const label=eventType===AttendanceEventType.CHECK_IN?'Clock-in':'Clock-out';
+    if(result.attendanceStatus&&result.attendanceStatus!=='CONFIRMED') return actionMessage('⚠️ '+label+' needs attention',`Your attempt was saved. It has not been confirmed as valid attendance.\nAssigned site: ${result.siteName??'Not configured'}\nReason: ${result.reason?.replaceAll('_',' ').replaceAll(',',' · ')??'Supervisor review required'}${result.distanceM!=null?`\nDistance from site centre: ${Math.round(result.distanceM)} metres`:''}\nA review item is available to your authorised supervisor.`,result.attendanceStatus==='PENDING'?[{id:`WA_ATTEMPT_EXPLAIN_${result.attemptId}`,title:'Explain location'},{id:eventType==='CHECK_IN'?'WA_ACTION_6':'WA_ACTION_7',title:'Send location again'},{id:'WA_MENU_ATTENDANCE',title:'Attendance menu'}]:attendanceActions);
+    return actionMessage(`✅ ${label} recorded`, `Time: ${timeLabel(now,result.timezone)}\nLocation: ${result.reason?.includes('OUTSIDE_SITE')?'Outside assigned site — flagged for review':'Shared location accepted'}${result.lateMinutes?`\nLate by: ${result.lateMinutes} minutes after scheduled start.\nA review alert has been queued in DeluxHR. No automatic pay deduction.`:''}`, [{id:'WA_ACTION_5',title:'My attendance'},{id:eventType==='CHECK_IN'?'WA_ACTION_7':'WA_MENU_ATTENDANCE',title:eventType==='CHECK_IN'?'Clock out':'Attendance menu'},{id:'WA_MENU_HOME',title:'Main menu'}]);
   }
   private async setFlow(sessionId: string, flow: Flow | null) {
     await this.prisma.whatsAppEssSession.update({
@@ -596,6 +603,7 @@ export class WhatsAppEssService {
   ): Promise<EssReply> {
     const org = employee.organizationId,
       id = employee.id;
+    if ((flow.kind.startsWith('LEAVE_') || flow.kind==='BALANCE_TYPE') && !(await this.entitlements.hasFeature(org,Feature.LEAVE))) { await this.setFlow(sessionId,null); return actionMessage('🌴 Leave unavailable','Leave is not enabled for your company.',leaveActions); }
     if (flow.kind === 'LEAVE_TYPE' || flow.kind === 'BALANCE_TYPE') {
       const types = await this.prisma.leaveType.findMany({
         where: { organizationId: org },
@@ -605,26 +613,9 @@ export class WhatsAppEssService {
       const index = Number(text) - 1;
       if (!Number.isInteger(index) || !types[index])
         return 'Choose a listed leave type number.';
-      if (flow.kind === 'BALANCE_TYPE') {
-        await this.setFlow(sessionId, null);
-        try {
-          const value = await this.policy.balance(
-            org,
-            id,
-            types[index].id,
-            calendarDate(new Date().toISOString().slice(0, 10)),
-          );
-          return `${types[index].name} balance: ${value.available.toFixed(2)} days available (${value.accrued.toFixed(2)} accrued, ${value.used.toFixed(2)} used).`;
-        } catch {
-          return 'A leave balance is not configured for this type. Contact HR.';
-        }
-      }
-      await this.setFlow(sessionId, {
-        kind: 'LEAVE_START',
-        leaveTypeId: types[index].id,
-      });
-      return 'Enter leave start date YYYY-MM-DD.';
+      return this.selectedLeaveType(employee,actor,sessionId,flow.kind==='BALANCE_TYPE'?'BALANCE':'REQUEST',types[index].id);
     }
+    if (flow.kind === 'ATTEMPT_EXPLANATION') { if(text.trim().length<5 || text.length>1000)return 'Use 5–1000 characters.'; const saved=await this.prisma.attendanceAttempt.updateMany({where:{id:flow.attemptId,organizationId:org,employeeId:id,submittedByUserId:actor.sub,status:'PENDING'},data:{explanation:text.trim().slice(0,1000)}});if(text.trim().length<5)return 'Use 5–1000 characters.';await this.audit.log({organizationId:org,entity:'AttendanceAttempt',entityId:flow.attemptId!,action:'ATTENDANCE_ATTEMPT_EXPLAINED',actorUserId:actor.sub,actorEmail:actor.email,actorRole:actor.role});await this.setFlow(sessionId,null);return actionMessage('📝 Explanation saved',saved.count?'Your explanation is available for supervisor review.':'This attempt is no longer awaiting review.',attendanceActions); }
     if (flow.kind === 'LEAVE_START') {
       try {
         calendarDate(text);
@@ -649,9 +640,11 @@ export class WhatsAppEssService {
         });
         await this.setFlow(sessionId, null);
         await this.auditAction(actor, id, 'WHATSAPP_ESS_LEAVE_REQUESTED');
-        return `Leave request ${result.id} submitted for ${result.requestedWorkingDays} working days. Status PENDING.`;
-      } catch {
-        return 'Leave request could not be submitted. Check the date and balance policy, or contact HR. Reply 0 to cancel.';
+        const type=await this.prisma.leaveType.findFirst({where:{id:flow.leaveTypeId,organizationId:org}});
+        return actionMessage('✅ Leave request submitted',`${type?.name??'Leave'}\nDates: ${dateLabel(flow.startDate!)} – ${dateLabel(text)}\nDuration: ${result.requestedWorkingDays} working ${result.requestedWorkingDays===1?'day':'days'}\nStatus: Awaiting approval\n\nYour request has been sent for review.`,leaveActions);
+      } catch (error) {
+        const message=error instanceof BadRequestException || error instanceof ConflictException ? error.message : 'Check the date and balance policy, or contact HR.';
+        return actionMessage('⚠️ Leave request not submitted',message,[{id:'WA_ACTION_3',title:'Choose new dates'},{id:'WA_MENU_LEAVE',title:'Back to Leave'},{id:'WA_MENU_HOME',title:'Main menu'}]);
       }
     }
     if (flow.kind === 'EXCEPTION') {
@@ -730,6 +723,31 @@ export class WhatsAppEssService {
     }
     await this.setFlow(sessionId, null);
     return this.menu(actor.organizationId);
+  }
+
+  private async leaveTypes(org:string,kind:'BALANCE'|'REQUEST',page=0):Promise<EssReply> {
+    if(!(await this.entitlements.hasFeature(org,Feature.LEAVE)))return actionMessage('🌴 Leave unavailable','Leave is not enabled for your company.',leaveActions);
+    const types=await this.prisma.leaveType.findMany({where:{organizationId:org},orderBy:{name:'asc'},take:100});
+    if(!types.length)return actionMessage('🌴 Leave types','No leave types configured. Contact HR.',leaveActions);
+    page=Math.max(0,Math.min(page,Math.floor((types.length-1)/7)));
+    const rows=types.slice(page*7,page*7+7).map((t,i)=>({id:`WA_TYPE_${kind}_${t.id}`,title:t.name.slice(0,24),description:`${page*7+i+1}. ${t.name}`.slice(0,72)}));
+    if(page>0)rows.push({id:`WA_TYPES_${kind}_${page-1}`,title:'Previous types',description:'See earlier leave types'});
+    if((page+1)*7<types.length)rows.push({id:`WA_TYPES_${kind}_${page+1}`,title:'More leave types',description:'See additional leave types'});
+    rows.push({id:'WA_MENU_LEAVE',title:'Back to Leave menu',description:'Choose a different leave action'});
+    return {interactive:{type:'list',header:{type:'text',text:kind==='BALANCE'?'🌴 Check leave balance':'🌴 Request leave'},body:{text:'Choose your leave type below.'},footer:{text:'Reply 0 to cancel and open the main menu'},action:{button:'Choose leave type',sections:[{title:'Leave types',rows}]}},fallback:'*Choose leave type*\n\n'+types.slice(0,20).map((t,i)=>`${i+1}. ${t.name}`).join('\n')+'\n\nReply with its number, or 0 to cancel.'};
+  }
+  private async selectedLeaveType(employee:{id:string;organizationId:string},actor:TenantJwtUser,sessionId:string,kind:'BALANCE'|'REQUEST',leaveTypeId:string):Promise<EssReply> {
+    if(!(await this.entitlements.hasFeature(actor.organizationId,Feature.LEAVE))){await this.setFlow(sessionId,null);return actionMessage('🌴 Leave unavailable','Leave is not enabled for your company.',leaveActions);}
+    const type=await this.prisma.leaveType.findFirst({where:{id:leaveTypeId,organizationId:actor.organizationId}});
+    if(!type)return actionMessage('🌴 Leave type unavailable','Refresh the Leave menu and choose a listed type.',leaveActions);
+    const asOf=calendarDate(new Intl.DateTimeFormat('en-CA',{timeZone:'Africa/Johannesburg',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()));
+    let guidance='';
+    try {const value=await this.policy.availability(actor.organizationId,employee.id,leaveTypeId,asOf);
+      guidance=value.balanceRequired?`Available to request now: ${value.availableToRequest.toFixed(2)} days (${value.maxFullDays} full working ${value.maxFullDays===1?'day':'days'}).\nAccrued: ${value.accrued.toFixed(2)} days\nUsed: ${value.used.toFixed(2)} days\nReserved for requests: ${value.reserved.toFixed(2)} days${value.negativeAllowance?`\nPolicy negative allowance: ${value.negativeAllowance} days`:''}`:'This leave type does not use an entitlement balance. Requests still need approval.';
+      if(kind==='BALANCE'){await this.setFlow(sessionId,null);return actionMessage(`🌴 ${type.name} balance`,guidance,[{id:`WA_REQUEST_${type.id}`,title:'Request leave'},{id:'WA_MENU_LEAVE',title:'Back to Leave'},{id:'WA_MENU_HOME',title:'Main menu'}]);}
+    }catch {if(kind==='BALANCE')return actionMessage('🌴 Leave balance','A leave balance is not configured for this type. Contact HR.',leaveActions);}
+    await this.setFlow(sessionId,{kind:'LEAVE_START',leaveTypeId});
+    return actionMessage(`🌴 Request ${type.name}`,`${guidance}\n\nEnter leave start date YYYY-MM-DD. Availability is checked again for your requested dates.`,[{id:'WA_MENU_LEAVE',title:'Cancel'},{id:'WA_MENU_HOME',title:'Main menu'}]);
   }
   private async menu(organizationId: string, category: MenuCategory = 'HOME') {
     const features = [Feature.CORE_HR, Feature.LEAVE, Feature.ATTENDANCE, Feature.PAYSLIPS, Feature.EARLY_PAY];

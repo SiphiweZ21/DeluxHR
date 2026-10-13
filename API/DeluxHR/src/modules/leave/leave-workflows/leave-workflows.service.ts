@@ -105,7 +105,7 @@ export class LeaveWorkflowsService {
    }
    const next = decision.request.decisions.filter(d=>d.step.order > decision.step.order).sort((a,b)=>a.step.order-b.step.order)[0];
    const result = await this.prisma.$transaction(async tx => {
-     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${user.organizationId}), hashtext(${decision.request.employeeId + ':' + decision.request.leaveTypeId}))`;
+     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${user.organizationId}), hashtext(${decision.request.employeeId}))`;
      const current = await tx.leaveApprovalDecision.findFirst({ where: { id, status: LeaveDecisionStatus.PENDING, request: { organizationId: user.organizationId, status: 'PENDING' } } });
      if (!current) throw new ConflictException('Approval step changed concurrently');
      const updated = await tx.leaveApprovalDecision.update({ where: { id }, data: { status: dto.status, decidedByUserId: user.sub, comment: dto.comment?.trim(), decidedAt: new Date() } });
@@ -195,15 +195,19 @@ export class LeaveWorkflowsService {
      if (!requirementsMet(policy.supportingDocumentRequired,policy.medicalCertificateAfterDays,days,kinds.map(d=>d.kind))) throw new ConflictException('Required supporting document is missing');
    }
    const updated = await this.prisma.$transaction(async tx => {
-     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${user.organizationId}), hashtext(${request.employeeId + ':' + request.leaveTypeId}))`;
+     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${user.organizationId}), hashtext(${request.employeeId}))`;
      const current = await tx.leaveChangeRequest.findFirst({ where: { id, status: LeaveChangeStatus.PENDING } });
      if (!current) throw new ConflictException('Change already reviewed');
      if (dto.status === LeaveChangeStatus.APPROVED) {
+       if(change.kind === LeaveChangeKind.AMENDMENT) {
+         if(await tx.leaveRequest.findFirst({where:{organizationId:user.organizationId,employeeId:request.employeeId,id:{not:request.id},status:{in:['PENDING','APPROVED']},startDate:{lte:change.proposedEnd!},endDate:{gte:change.proposedStart!}}}))throw new ConflictException('Amended leave overlaps another request');
+         await this.policy.validateCapacity(user.organizationId,request.employeeId,request.leaveTypeId,change.proposedStart!,change.proposedEnd!,tx,request.id);
+       }
        for (const [year,days] of Object.entries(newBreakdown)) {
          const asOf = new Date(Math.min(change.proposedEnd!.getTime(),Date.UTC(Number(year),11,31)));
-         const balance = await this.policy.balance(user.organizationId,request.employeeId,request.leaveTypeId,asOf);
-         const policy = await this.policy.policyFor(user.organizationId,request.employeeId,request.leaveTypeId,asOf);
-         if (balance.available + Number(oldBreakdown[year] ?? 0) - days < -policy.maxNegativeDays) throw new ConflictException(`Insufficient leave balance for ${year}`);
+         const balance = await this.policy.balance(user.organizationId,request.employeeId,request.leaveTypeId,asOf,0,tx);
+         const policy = await this.policy.policyFor(user.organizationId,request.employeeId,request.leaveTypeId,asOf,tx);
+         if (policy.balanceRequired !== false && balance.available + Number(oldBreakdown[year] ?? 0) - days < -policy.maxNegativeDays) throw new ConflictException(`Insufficient leave balance for ${year}`);
        }
        if (change.kind === LeaveChangeKind.CANCELLATION) await tx.leaveRequest.update({ where: { id: request.id }, data: { status: 'CANCELLED' } });
        else await tx.leaveRequest.update({ where: { id: request.id }, data: { startDate: change.proposedStart!, endDate: change.proposedEnd!, chargedDays: Object.values(newBreakdown).reduce((a,b)=>a+b,0), chargeBreakdown: newBreakdown } });

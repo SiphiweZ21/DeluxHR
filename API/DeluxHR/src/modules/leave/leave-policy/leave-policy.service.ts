@@ -6,7 +6,7 @@ import type { TenantJwtUser } from '../../../common/auth/jwt-user.type';
 import { calendarDate } from '../../recurring-schedules/recurring-schedules.service';
 import { AdjustLeaveBalanceDto, AssignLeavePolicyDto, CreateLeavePolicyDto, CreatePublicHolidayDto } from './dto/leave-policy.dto';
 
-type Policy = { id: string; organizationId: string; leaveTypeId: string; annualEntitlementDays: number; accrualMode: LeaveAccrualMode; carryOverMaxDays: number; carryOverExpiryMonths: number; maxNegativeDays: number; probationMonths: number; workingWeekdays: number[]; excludePublicHolidays: boolean; isActive: boolean; createdAt: Date; supportingDocumentRequired: boolean; medicalCertificateAfterDays: number | null };
+type Policy = { balanceRequired?: boolean; id: string; organizationId: string; leaveTypeId: string; annualEntitlementDays: number; accrualMode: LeaveAccrualMode; carryOverMaxDays: number; carryOverExpiryMonths: number; maxNegativeDays: number; probationMonths: number; workingWeekdays: number[]; excludePublicHolidays: boolean; isActive: boolean; createdAt: Date; supportingDocumentRequired: boolean; medicalCertificateAfterDays: number | null };
 export function countWorkingDays(from: Date, to: Date, weekdays: number[], holidays: Set<string>): number {
   if (to < from) throw new BadRequestException('End date precedes start date');
   const days = Math.round((to.getTime()-from.getTime())/86400000);
@@ -86,15 +86,15 @@ export class LeavePolicyService {
    const updated = await this.prisma.employeeLeavePolicyAssignment.update({ where: { id }, data: { effectiveTo: to } });
    await this.log(user,'EmployeeLeavePolicyAssignment',id,'EMPLOYEE_LEAVE_POLICY_ENDED'); return updated;
  }
- async policyFor(organizationId: string, employeeId: string, leaveTypeId: string, date: Date): Promise<Policy> {
-   const assigned = await this.prisma.employeeLeavePolicyAssignment.findFirst({ where: { organizationId, employeeId, leaveTypeId, effectiveFrom: { lte: date }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: date } }] }, include: { policy: true } });
+ async policyFor(organizationId: string, employeeId: string, leaveTypeId: string, date: Date, database: PrismaService | Prisma.TransactionClient = this.prisma): Promise<Policy> {
+   const assigned = await database.employeeLeavePolicyAssignment.findFirst({ where: { organizationId, employeeId, leaveTypeId, effectiveFrom: { lte: date }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: date } }] }, include: { policy: true } });
    if (assigned) return assigned.policy;
-   const policy = await this.prisma.leavePolicy.findFirst({ where: { organizationId, leaveTypeId, isDefault: true, isActive: true } });
+   const policy = await database.leavePolicy.findFirst({ where: { organizationId, leaveTypeId, isDefault: true, isActive: true } });
    if (!policy) throw new NotFoundException('No active leave policy configured for this leave type');
    return policy;
  }
- async holidays(organizationId: string, from: Date, to: Date) {
-   return this.prisma.companyPublicHoliday.findMany({ where: { organizationId, date: { gte: from, lte: to } }, orderBy: { date: 'asc' } });
+ async holidays(organizationId: string, from: Date, to: Date, database: PrismaService | Prisma.TransactionClient = this.prisma) {
+   return database.companyPublicHoliday.findMany({ where: { organizationId, date: { gte: from, lte: to } }, orderBy: { date: 'asc' } });
  }
  async addHoliday(user: TenantJwtUser, dto: CreatePublicHolidayDto) {
    const date = calendarDate(dto.date), name = dto.name?.trim(); if (!name) throw new BadRequestException('Holiday name required');
@@ -106,8 +106,8 @@ export class LeavePolicyService {
    if (!holiday) throw new NotFoundException('Holiday not found');
    await this.prisma.companyPublicHoliday.delete({ where: { id } }); await this.log(user,'CompanyPublicHoliday',id,'PUBLIC_HOLIDAY_REMOVED'); return { deleted: true };
  }
- async workingDays(organizationId: string, policy: Policy, from: Date, to: Date) {
-   const holidays = policy.excludePublicHolidays ? await this.holidays(organizationId,from,to) : [];
+ async workingDays(organizationId: string, policy: Policy, from: Date, to: Date, database: PrismaService | Prisma.TransactionClient = this.prisma) {
+   const holidays = policy.excludePublicHolidays ? await this.holidays(organizationId,from,to,database) : [];
    return countWorkingDays(from,to,policy.workingWeekdays,new Set(holidays.map(h => h.date.toISOString().slice(0,10))));
  }
  async workingDaysForEmployee(organizationId: string, employeeId: string, leaveTypeId: string, from: Date, to: Date) {
@@ -133,24 +133,24 @@ export class LeavePolicyService {
    await this.log(user,'LeaveBalanceAdjustment',adjustment.id,'LEAVE_BALANCE_ADJUSTED',dto.reason.trim()); return adjustment;
  }
  // Returns an annual balance. Carry-over is capped and may expire. Max lookback prevents unbounded historical recursion.
- async balance(organizationId: string, employeeId: string, leaveTypeId: string, asOf: Date, depth = 0): Promise<{ year: number; accrued: number; carryOver: number; adjustments: number; used: number; available: number; policyId: string }> {
+ async balance(organizationId: string, employeeId: string, leaveTypeId: string, asOf: Date, depth = 0, database: PrismaService | Prisma.TransactionClient = this.prisma): Promise<{ year: number; accrued: number; carryOver: number; adjustments: number; used: number; available: number; policyId: string }> {
    if (depth > 20) throw new BadRequestException('Balance history exceeds supported lookback');
-   const employee = await this.prisma.employee.findFirst({ where: { id: employeeId, organizationId }, select: { employmentStartDate: true } });
+   const employee = await database.employee.findFirst({ where: { id: employeeId, organizationId }, select: { employmentStartDate: true } });
    if (!employee) throw new NotFoundException('Employee not found');
-   const policy = await this.policyFor(organizationId,employeeId,leaveTypeId,asOf);
+   const policy = await this.policyFor(organizationId,employeeId,leaveTypeId,asOf,database);
    const year = asOf.getUTCFullYear(), yearStart = new Date(Date.UTC(year,0,1));
    const accrued = accrualForYear(policy.accrualMode,policy.annualEntitlementDays,employee.employmentStartDate,asOf);
    let carryOver = 0;
    if (policy.carryOverMaxDays > 0 && policy.carryOverExpiryMonths > 0 && year > policy.createdAt.getUTCFullYear() && (!employee.employmentStartDate || employee.employmentStartDate < yearStart)) {
      const expiry = new Date(Date.UTC(year, policy.carryOverExpiryMonths, 1));
      if (asOf < expiry) {
-       try { const prior = await this.balance(organizationId,employeeId,leaveTypeId,new Date(Date.UTC(year-1,11,31)),depth+1); carryOver = Math.min(policy.carryOverMaxDays,Math.max(0,prior.available)); }
+       try { const prior = await this.balance(organizationId,employeeId,leaveTypeId,new Date(Date.UTC(year-1,11,31)),depth+1,database); carryOver = Math.min(policy.carryOverMaxDays,Math.max(0,prior.available)); }
        catch (error) { if (!(error instanceof NotFoundException)) throw error; }
      }
    }
    const [adjustments, requests] = await Promise.all([
-     this.prisma.leaveBalanceAdjustment.findMany({ where: { organizationId, employeeId, leaveTypeId, effectiveDate: { gte: yearStart, lte: asOf } } }),
-     this.prisma.leaveRequest.findMany({ where: { organizationId, employeeId, leaveTypeId, status: 'APPROVED', startDate: { lte: asOf } }, select: { chargedDays: true, chargeBreakdown: true, startDate: true, endDate: true } }),
+     database.leaveBalanceAdjustment.findMany({ where: { organizationId, employeeId, leaveTypeId, effectiveDate: { gte: yearStart, lte: asOf } } }),
+     database.leaveRequest.findMany({ where: { organizationId, employeeId, leaveTypeId, status: 'APPROVED', startDate: { lte: asOf } }, select: { chargedDays: true, chargeBreakdown: true, startDate: true, endDate: true } }),
    ]);
    const adjusted = adjustments.reduce((sum,a)=>sum+a.days,0);
    let used = 0;
@@ -161,11 +161,45 @@ export class LeavePolicyService {
      else if (request.chargedDays == null && request.endDate >= yearStart) {
        const segmentStart = request.startDate > yearStart ? request.startDate : yearStart;
        const segmentEnd = request.endDate < asOf ? request.endDate : asOf;
-       if (segmentEnd >= segmentStart) used += await this.workingDays(organizationId,policy,segmentStart,segmentEnd);
+       if (segmentEnd >= segmentStart) used += await this.workingDays(organizationId,policy,segmentStart,segmentEnd,database);
      }
    }
    const available = Math.round((accrued+carryOver+adjusted-used)*100)/100;
    return { year, accrued: Math.round(accrued*100)/100, carryOver, adjustments: adjusted, used, available, policyId: policy.id };
+ }
+
+ async availability(organizationId: string, employeeId: string, leaveTypeId: string, asOf: Date, database: PrismaService | Prisma.TransactionClient = this.prisma, excludeRequestId?: string) {
+   const policy = await this.policyFor(organizationId, employeeId, leaveTypeId, asOf, database);
+   const balance = await this.balance(organizationId, employeeId, leaveTypeId, asOf, 0, database);
+   const first = new Date(Date.UTC(asOf.getUTCFullYear(), 0, 1)), last = new Date(Date.UTC(asOf.getUTCFullYear(), 11, 31));
+   const pending = await database.leaveRequest.findMany({ where: { organizationId, employeeId, leaveTypeId, ...(excludeRequestId ? { id: { not: excludeRequestId } } : {}), status: { in: ['PENDING', 'APPROVED'] }, startDate: { lte: last }, endDate: { gte: first } } });
+   let reserved = 0;
+   for (const request of pending) {
+     // Approved requests already represented by balance.used must not be charged twice.
+     if (request.status === 'APPROVED' && request.startDate <= asOf) continue;
+     const from = new Date(Math.max(first.getTime(), request.startDate.getTime()));
+     const to = new Date(Math.min(last.getTime(), request.endDate.getTime()));
+     const ownPolicy = await this.policyFor(organizationId, employeeId, leaveTypeId, from, database);
+     reserved += await this.workingDays(organizationId, ownPolicy, from, to, database);
+   }
+   let ownCredit = 0;
+   if(excludeRequestId) {
+     const own=await database.leaveRequest.findFirst({where:{id:excludeRequestId,organizationId,employeeId,leaveTypeId,status:'APPROVED'}});
+     if(own && own.startDate<=asOf) { const breakdown=own.chargeBreakdown as Record<string,number>|null;ownCredit=breakdown?Number(breakdown[String(asOf.getUTCFullYear())]??0):own.startDate.getUTCFullYear()===asOf.getUTCFullYear()?own.chargedDays??0:0; }
+   }
+   const availableToRequest = Math.max(0, Math.round((balance.available + ownCredit - reserved + policy.maxNegativeDays) * 100) / 100);
+   return { ...balance, reserved, availableToRequest, maxFullDays: Math.floor(availableToRequest), negativeAllowance: policy.maxNegativeDays, balanceRequired: policy.balanceRequired !== false };
+ }
+ async validateCapacity(organizationId: string, employeeId: string, leaveTypeId: string, from: Date, to: Date, database: PrismaService | Prisma.TransactionClient, excludeRequestId?: string) {
+   for (let year = from.getUTCFullYear(); year <= to.getUTCFullYear(); year++) {
+     const begin = new Date(Math.max(from.getTime(), Date.UTC(year, 0, 1)));
+     const end = new Date(Math.min(to.getTime(), Date.UTC(year, 11, 31)));
+     const policy = await this.policyFor(organizationId, employeeId, leaveTypeId, begin, database);
+     const days = await this.workingDays(organizationId, policy, begin, end, database);
+     if (policy.balanceRequired === false || !days) continue;
+     const value = await this.availability(organizationId, employeeId, leaveTypeId, end, database, excludeRequestId);
+     if (days > value.availableToRequest + 0.000001) throw new BadRequestException({ code: 'INSUFFICIENT_LEAVE_BALANCE', message: `Not enough leave for ${year}. Requested: ${days} working days. Available to request: ${value.availableToRequest.toFixed(2)} days after reservations and the policy allowance. You can request up to ${value.maxFullDays} full working ${value.maxFullDays===1?'day':'days'}. Choose shorter dates or contact HR.`, requestedDays: days, ...value });
+   }
  }
  async calendar(organizationId: string, from: Date, to: Date) {
    if (to < from || (to.getTime()-from.getTime())/86400000 > 366) throw new BadRequestException('Invalid calendar range');

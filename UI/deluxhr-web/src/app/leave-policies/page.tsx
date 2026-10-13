@@ -45,7 +45,7 @@ function PolicyForm({ types, onSave }: { types: LeaveType[]; onSave: (p: api.New
     const weekdays = d.getAll('workingWeekdays').map(Number);
     if (!weekdays.length) { action.setError('Select at least one working weekday.'); return; }
     await action.run(async () => {
-      await onSave({ leaveTypeId: text(d, 'leaveTypeId'), code: text(d, 'code'), name: text(d, 'name'), isDefault: d.has('isDefault'), annualEntitlementDays: number(d, 'annualEntitlementDays'), accrualMode: text(d, 'accrualMode') as api.NewLeavePolicy['accrualMode'], carryOverMaxDays: number(d, 'carryOverMaxDays'), carryOverExpiryMonths: number(d, 'carryOverExpiryMonths'), maxNegativeDays: number(d, 'maxNegativeDays'), probationMonths: number(d, 'probationMonths'), workingWeekdays: weekdays, excludePublicHolidays: d.has('excludePublicHolidays'), supportingDocumentRequired: d.has('supportingDocumentRequired'), ...(text(d, 'medicalCertificateAfterDays') ? { medicalCertificateAfterDays: number(d, 'medicalCertificateAfterDays') } : {}) });
+      await onSave({ leaveTypeId: text(d, 'leaveTypeId'), code: text(d, 'code'), name: text(d, 'name'), isDefault: d.has('isDefault'), balanceRequired: d.has('balanceRequired'), annualEntitlementDays: number(d, 'annualEntitlementDays'), accrualMode: text(d, 'accrualMode') as api.NewLeavePolicy['accrualMode'], carryOverMaxDays: number(d, 'carryOverMaxDays'), carryOverExpiryMonths: number(d, 'carryOverExpiryMonths'), maxNegativeDays: number(d, 'maxNegativeDays'), probationMonths: number(d, 'probationMonths'), workingWeekdays: weekdays, excludePublicHolidays: d.has('excludePublicHolidays'), supportingDocumentRequired: d.has('supportingDocumentRequired'), ...(text(d, 'medicalCertificateAfterDays') ? { medicalCertificateAfterDays: number(d, 'medicalCertificateAfterDays') } : {}) });
       form.reset();
     }, 'Leave policy created.');
   }
@@ -58,6 +58,7 @@ function PolicyForm({ types, onSave }: { types: LeaveType[]; onSave: (p: api.New
     <label className="flex items-center gap-2 text-sm"><input name="excludePublicHolidays" type="checkbox" defaultChecked/>Exclude public holidays</label>
     <label className="flex items-center gap-2 text-sm"><input name="supportingDocumentRequired" type="checkbox"/>Require supporting documents</label>
     <Field label="Require medical certificate from (days, optional)"><input name="medicalCertificateAfterDays" type="number" min={1} max={366} step={1} className={control}/></Field>
+    <label className="flex gap-2 text-sm"><input name="balanceRequired" type="checkbox" defaultChecked/>Track entitlement balance (disable for Unpaid Leave)</label>
     <button className={button}>{action.busy ? 'Saving…' : 'Create policy'}</button>
   </fieldset></form></Card>;
 }

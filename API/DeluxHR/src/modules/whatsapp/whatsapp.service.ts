@@ -1,4 +1,4 @@
-import type { WhatsAppList } from '../whatsapp-ess/whatsapp-menu';
+import type { WhatsAppList, WhatsAppButtons } from '../whatsapp-ess/whatsapp-menu';
 import {
   Injectable,
   Logger,
@@ -98,8 +98,14 @@ export class WhatsAppService {
     );
   }
 
-  async sendInteractiveList(to: string, interactive: WhatsAppList) {
+  async sendInteractiveList(to: string, interactive: WhatsAppList | WhatsAppButtons) {
     return this.sendWhatsAppPayload({ messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'interactive', interactive }, 'Failed to send WhatsApp menu');
+  }
+
+  async sendAttendanceAlert(to: string, name: string, summary: string, url: string) {
+    const template=process.env.WHATSAPP_ATTENDANCE_ALERT_TEMPLATE;
+    if(!template || !/^[a-z0-9_]+$/.test(template)) throw new InternalServerErrorException('Approved attendance alert template is not configured');
+    return this.sendWhatsAppPayload({messaging_product:'whatsapp',to,type:'template',template:{name:template,language:{code:process.env.WHATSAPP_ATTENDANCE_ALERT_LANGUAGE??'en'},components:[{type:'body',parameters:[{type:'text',text:name},{type:'text',text:summary},{type:'text',text:url}]}]}},'Failed to send attendance alert');
   }
 
   async handleIncomingMessage(from: string, text: string) {

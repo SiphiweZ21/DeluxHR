@@ -1,6 +1,7 @@
 import { ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsBoolean, IsDateString, IsEnum, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
 import { LeaveAccrualMode, LeaveBalanceAdjustmentType } from '@prisma/client';
 export class CreateLeavePolicyDto {
+ @IsOptional() @IsBoolean() balanceRequired?: boolean;
  @IsUUID() leaveTypeId!: string;
  @IsString() @MaxLength(40) code!: string;
  @IsString() @MaxLength(120) name!: string;

@@ -14,7 +14,17 @@ export type WhatsAppList = {
   footer: { text: string };
   action: { button: string; sections: { title: string; rows: ListRow[] }[] };
 };
-export type MenuReply = { interactive: WhatsAppList; fallback: string };
+export type WhatsAppButtons = {
+  type: 'button';
+  body: { text: string };
+  action: {
+    buttons: { type: 'reply'; reply: { id: string; title: string } }[];
+  };
+};
+export type MenuReply = {
+  interactive: WhatsAppList | WhatsAppButtons;
+  fallback: string;
+};
 export type EssReply = string | MenuReply;
 const groups: {
   key: MenuCategory;
@@ -145,13 +155,17 @@ export function validMenuId(value: unknown): value is string {
   return (
     typeof value === 'string' &&
     (/^WA_MENU_(HOME|DETAILS|LEAVE|ATTENDANCE|PAY|HR)$/.test(value) ||
-      /^WA_ACTION_([1-9]|1[0-3])$/.test(value))
+      /^WA_ACTION_([1-9]|1[0-3])$/.test(value) ||
+      /^WA_TYPES_(BALANCE|REQUEST)_\d{1,3}$/.test(value) ||
+      /^WA_(TYPE_(BALANCE|REQUEST)|REQUEST|ATTEMPT_EXPLAIN)_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        value,
+      ))
   );
 }
 export function buildWhatsAppMenu(
   enabled: ReadonlySet<Feature>,
   category: MenuCategory = 'HOME',
-): MenuReply {
+): MenuReply & { interactive: WhatsAppList } {
   const available = groups
     .map((g) => ({
       ...g,
@@ -218,3 +232,54 @@ export function buildWhatsAppMenu(
     fallback,
   };
 }
+
+export function actionMessage(
+  title: string,
+  body: string,
+  buttons: Array<{ id: string; title: string }>,
+): MenuReply {
+  const text = `*${title}*\n\n${body}`.slice(0, 970);
+  return {
+    interactive: {
+      type: 'button',
+      body: { text },
+      action: {
+        buttons: buttons.slice(0, 3).map((reply) => ({ type: 'reply', reply })),
+      },
+    },
+    fallback: text + '\n\nReply 0 for the main menu.',
+  };
+}
+export function dateLabel(value: Date | string) {
+  return new Intl.DateTimeFormat('en-ZA', {
+    timeZone: 'UTC',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(value));
+}
+export function timeLabel(
+  value: Date | string,
+  timezone = 'Africa/Johannesburg',
+) {
+  return new Intl.DateTimeFormat('en-ZA', {
+    timeZone: timezone,
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    timeZoneName: 'short',
+  }).format(new Date(value));
+}
+export const leaveActions = [
+  { id: 'WA_ACTION_4', title: 'Check status' },
+  { id: 'WA_MENU_LEAVE', title: 'Back to Leave' },
+  { id: 'WA_MENU_HOME', title: 'Main menu' },
+];
+export const attendanceActions = [
+  { id: 'WA_ACTION_5', title: 'My attendance' },
+  { id: 'WA_MENU_ATTENDANCE', title: 'Attendance menu' },
+  { id: 'WA_MENU_HOME', title: 'Main menu' },
+];

@@ -1,3 +1,4 @@
+import { AttendanceReviewService } from '../attendance-review/attendance-review.service';
 import {
   BadRequestException,
   ForbiddenException,
@@ -20,6 +21,7 @@ export class AttendanceEventsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly review?: AttendanceReviewService,
   ) {}
 
   async create(
@@ -99,6 +101,11 @@ export class AttendanceEventsService {
       dto.longitude,
     );
 
+    if (dto.channel === AttendanceChannel.WHATSAPP && this.review) {
+      const attempt = await this.review.capture(actor, dto);
+      // Unconfirmed attempts never enter the event stream used for timesheets.
+      return { ...attempt, attendanceStatus: attempt.status, attemptId: attempt.id };
+    }
     const event = await this.prisma.attendanceEvent.create({
       data: {
         organizationId,

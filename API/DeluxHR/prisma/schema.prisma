@@ -431,6 +431,9 @@ enum EarlyPayTransferType {
 }
 
 model Organization {
+  attendanceReviewSettings AttendanceReviewSettings?
+  attendanceAttempts AttendanceAttempt[]
+  attendanceAlerts AttendanceAlert[]
  companyDocuments CompanyOnboardingDocument[]
   id     String             @id @default(uuid())
   name   String
@@ -649,6 +652,7 @@ model PlatformAuditEvent {
 }
 
 model User {
+  attendanceAlerts AttendanceAlert[]
   id             String   @id @default(uuid())
   fullName       String
   email          String   @unique
@@ -707,6 +711,8 @@ model Department {
 }
 
 model Employee {
+  attendanceAttempts AttendanceAttempt[]
+  attendanceAlerts AttendanceAlert[]
   lastSubmittedByUserId String?
   positionId String?
   position Position? @relation(fields:[organizationId,departmentId,positionId],references:[organizationId,departmentId,id],onDelete:Restrict)
@@ -2277,6 +2283,7 @@ model LeavePolicy {
   name String
   isDefault Boolean @default(false)
   isActive Boolean @default(true)
+  balanceRequired Boolean @default(true)
   annualEntitlementDays Float
   accrualMode LeaveAccrualMode @default(ANNUAL_UPFRONT)
   carryOverMaxDays Float @default(0)
@@ -2994,4 +3001,71 @@ model EmployeeProfileChange {
  reason String?
  createdAt DateTime @default(now())
  @@index([organizationId, status])
+}
+
+model AttendanceReviewSettings {
+  organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade)
+  whatsappAlerts Boolean @default(false)
+  organizationId String @id
+  enabled Boolean @default(false)
+  locationMode String @default("REVIEW")
+  reminderMinutes Int @default(5)
+  supervisorMinutes Int @default(10)
+  escalationMinutes Int @default(20)
+  reviewerUserId String?
+  operationsUserId String?
+  siteRouting Json @default("[]")
+  updatedAt DateTime @updatedAt
+}
+model AttendanceAttempt {
+  organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade)
+  employee Employee @relation(fields:[employeeId], references:[id], onDelete:Cascade)
+  id String @id @default(uuid())
+  organizationId String
+  employeeId String
+  submittedByUserId String
+  sourceReference String
+  eventType AttendanceEventType
+  channel AttendanceChannel
+  capturedAt DateTime
+  workLocationId String?
+  latitude Float
+  longitude Float
+  distanceM Float?
+  reason String
+  mode String
+  status String
+  lateMinutes Int @default(0)
+  shiftStart DateTime?
+  timezone String @default("Africa/Johannesburg")
+  explanation String?
+  resolution String?
+  reviewedByUserId String?
+  reviewedAt DateTime?
+  acceptedEventId String? @unique
+  createdAt DateTime @default(now())
+  @@unique([organizationId, sourceReference])
+  @@index([organizationId, status, capturedAt])
+  @@index([organizationId, employeeId, capturedAt])
+}
+model AttendanceAlert {
+  organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade)
+  employee Employee @relation(fields:[employeeId], references:[id], onDelete:Cascade)
+  recipient User @relation(fields:[recipientUserId], references:[id], onDelete:Cascade)
+  whatsappStatus String @default("NOT_REQUESTED")
+  whatsappClaimedAt DateTime?
+  whatsappProviderId String?
+  id String @id @default(uuid())
+  organizationId String
+  employeeId String
+  recipientUserId String
+  incidentKey String
+  kind String
+  message String
+  shiftStart DateTime?
+  resolved Boolean @default(false)
+  readAt DateTime?
+  createdAt DateTime @default(now())
+  @@unique([organizationId, recipientUserId, incidentKey])
+  @@index([organizationId, recipientUserId, createdAt])
 }

@@ -53,7 +53,7 @@ export type InputSpec = {
   required?: boolean;
   min?: number;
   max?: number;
-  step?: number;
+  step?: number | "any";
   maxLength?: number;
   minLength?: number;
   value?: string | number | boolean;

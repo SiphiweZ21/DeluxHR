@@ -165,7 +165,7 @@ describe('WhatsApp interactive menu', () => {
     const x = fixture();
     await x.process('WA_ACTION_3');
     expect(x.session.flow).toEqual({ kind: 'LEAVE_TYPE' });
-    expect(x.sender.sendTextMessage.mock.calls[0][1]).toContain('Annual Leave');
+    expect(x.sender.sendInteractiveList.mock.calls[0][1].action.sections[0].rows[0].title).toBe('Annual Leave');
   });
   it('rechecks features when an old option is tapped', async () => {
     const x = fixture(new Set([Feature.CORE_HR, Feature.WHATSAPP]));

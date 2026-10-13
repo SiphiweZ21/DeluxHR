@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -212,6 +213,9 @@ export class AttendanceCorrectionsService {
       throw new NotFoundException('Attendance exception not found');
     }
 
+    const ownEmployee = await this.prisma.employee.findFirst({where:{id:exception.employeeId,organizationId:user.organizationId,userId:user.sub},select:{id:true}});
+    const ownCapture = exception.sourceAttendanceEventId ? await this.prisma.attendanceEvent.findFirst({where:{id:exception.sourceAttendanceEventId,organizationId:user.organizationId,createdByUserId:user.sub},select:{id:true}}) : null;
+    if(ownEmployee || ownCapture) throw new ForbiddenException('Another authorised user must review your own attendance or capture.');
     if (exception.status !== AttendanceExceptionStatus.OPEN) {
       throw new ConflictException(
         'Attendance exception has already been reviewed',

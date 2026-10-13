@@ -26,13 +26,14 @@ export class LeaveRequestsService {
    const request = await this.prisma.$transaction(async tx => {
      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${user.organizationId}), hashtext(${dto.employeeId}))`;
      if (await tx.leaveRequest.findFirst({ where: { organizationId: user.organizationId, employeeId: dto.employeeId, status: { in: ['PENDING','APPROVED'] }, startDate: { lte: endDate }, endDate: { gte: startDate } } })) throw new ConflictException('Employee has overlapping pending or approved leave');
+     await this.policy.validateCapacity(user.organizationId, dto.employeeId, dto.leaveTypeId, startDate, endDate, tx);
      const created = await tx.leaveRequest.create({ data: { organizationId: user.organizationId, employeeId: dto.employeeId, leaveTypeId: dto.leaveTypeId, startDate, endDate, status: 'PENDING', submittedByUserId: user.sub, policyId: policy.id, approvalWorkflowId: workflow?.id } });
      if (workflow) {
        for (const step of workflow.steps) await tx.leaveApprovalDecision.create({ data: { requestId: created.id, stepId: step.id } });
        if (workflow.steps[0]) await tx.leaveNotification.create({ data: { organizationId: user.organizationId, requestId: created.id, recipientUserId: workflow.steps[0].approverUserId, message: 'Leave request awaiting your approval' } });
      }
      return created;
-   });
+   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
    await this.audit.log({ organizationId: user.organizationId, action: 'LEAVE_REQUEST_SUBMITTED', entity: 'LeaveRequest', entityId: request.id, actorUserId: user.sub, actorEmail: user.email, actorRole: user.role });
    return { ...request, requestedWorkingDays: days };
  }
@@ -66,14 +67,15 @@ export class LeaveRequestsService {
    const chargedDays = Object.values(breakdown).reduce((a,b)=>a+b,0);
    if (!chargedDays) throw new BadRequestException('Leave contains no working days');
    const updated = await this.prisma.$transaction(async tx => {
-     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${user.organizationId}), hashtext(${request.employeeId + ':' + request.leaveTypeId}))`;
+     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${user.organizationId}), hashtext(${request.employeeId}))`;
      const current = await tx.leaveRequest.findFirst({ where: { id, organizationId: user.organizationId, status: 'PENDING' } });
      if (!current) throw new ConflictException('Leave request already processed');
+     await this.policy.validateCapacity(user.organizationId, request.employeeId, request.leaveTypeId, request.startDate, request.endDate, tx, id);
      for (const [year,days] of Object.entries(breakdown)) {
        const asOf = new Date(Math.min(request.endDate.getTime(),Date.UTC(Number(year),11,31)));
-       const balance = await this.policy.balance(user.organizationId,request.employeeId,request.leaveTypeId,asOf);
-       const yearlyPolicy = await this.policy.policyFor(user.organizationId,request.employeeId,request.leaveTypeId,asOf);
-       if (balance.available - days < -yearlyPolicy.maxNegativeDays) throw new ConflictException(`Insufficient leave balance for ${year}`);
+       const balance = await this.policy.balance(user.organizationId,request.employeeId,request.leaveTypeId,asOf,0,tx);
+       const yearlyPolicy = await this.policy.policyFor(user.organizationId,request.employeeId,request.leaveTypeId,asOf,tx);
+       if (yearlyPolicy.balanceRequired !== false && balance.available - days < -yearlyPolicy.maxNegativeDays) throw new ConflictException(`Insufficient leave balance for ${year}`);
      }
      return tx.leaveRequest.update({ where: { id }, data: { status: 'APPROVED', chargedDays, chargeBreakdown: breakdown, policyId: policy.id } });
    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -98,11 +100,13 @@ export class LeaveRequestsService {
    }
    const chargedDays = Object.values(breakdown).reduce((a,b)=>a+b,0);
    if (!chargedDays) throw new BadRequestException('Leave contains no working days');
+   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${user.organizationId}), hashtext(${request.employeeId}))`;
+   await this.policy.validateCapacity(user.organizationId, request.employeeId, request.leaveTypeId, request.startDate, request.endDate, tx, id);
    for (const [year,days] of Object.entries(breakdown)) {
      const asOf = new Date(Math.min(request.endDate.getTime(),Date.UTC(Number(year),11,31)));
-     const balance = await this.policy.balance(user.organizationId,request.employeeId,request.leaveTypeId,asOf);
-     const currentPolicy = await this.policy.policyFor(user.organizationId,request.employeeId,request.leaveTypeId,asOf);
-     if (balance.available - days < -currentPolicy.maxNegativeDays) throw new ConflictException(`Insufficient leave balance for ${year}`);
+     const balance = await this.policy.balance(user.organizationId,request.employeeId,request.leaveTypeId,asOf,0,tx);
+     const currentPolicy = await this.policy.policyFor(user.organizationId,request.employeeId,request.leaveTypeId,asOf,tx);
+     if (currentPolicy.balanceRequired !== false && balance.available - days < -currentPolicy.maxNegativeDays) throw new ConflictException(`Insufficient leave balance for ${year}`);
    }
    return tx.leaveRequest.update({ where: { id }, data: { status: 'APPROVED', chargedDays, chargeBreakdown: breakdown, policyId: policy.id } });
  }

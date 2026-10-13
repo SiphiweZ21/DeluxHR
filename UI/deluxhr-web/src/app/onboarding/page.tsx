@@ -25,6 +25,7 @@ import {
   OpeningLeave,
 } from "../../components/onboarding/leave-setup";
 import { WhatsAppEmployeeSetup } from "../../components/whatsapp-employee-setup";
+import {AttendanceReview} from "../../components/attendance/review";
 import { EmployeeSetup } from "../../components/onboarding/employee-setup";
 import { CompanyBanking } from "../../components/banking/company-banking";
 import {
@@ -299,6 +300,7 @@ export default function Page() {
         </div>
         <div className={tab === tabs[2] ? "space-y-6" : "hidden"}>
           <StructureSetup />
+          <AttendanceReview setupOnly />
         </div>
         <div className={tab === tabs[3] ? "space-y-6" : "hidden"}>
           <LeaveSetup />

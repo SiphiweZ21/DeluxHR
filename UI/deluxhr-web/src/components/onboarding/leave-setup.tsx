@@ -73,6 +73,7 @@ export function LeaveSetup() {
             type: "checkbox",
             value: true,
           },
+          { name: "balanceRequired", label: "Track entitlement balance (disable for Unpaid Leave)", type: "checkbox", value: true },
           {
             name: "annualEntitlementDays",
             label: "Annual entitlement (days)",
@@ -173,6 +174,7 @@ export function LeaveSetup() {
               code: string(d, "code"),
               name: string(d, "name"),
               isDefault: d.get("isDefault") === "on",
+              balanceRequired: d.get("balanceRequired") === "on",
               annualEntitlementDays: numeric(d, "annualEntitlementDays"),
               accrualMode: string(d, "accrualMode") as
                 | "ANNUAL_UPFRONT"

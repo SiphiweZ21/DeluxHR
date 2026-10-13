@@ -57,8 +57,7 @@ function setup(flow: any = null, latest: any = null) {
     session,
     attendance,
     entitlements,
-    handle: (text: string, location?: any) =>
-      (service as any).handle('27821234567', text, 'message-id', location),
+    handle: async (text: string, location?: any) => { const reply = await (service as any).handle('27821234567', text, 'message-id', location); return typeof reply === 'string' ? reply : reply.interactive.body.text; },
   };
 }
 const flow = (eventType = 'CHECK_IN') => ({

@@ -1,6 +1,5 @@
 'use client';
 
-import { PositionSuggestions } from '../../components/position-suggestions';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { createDepartment, getDepartments, getEmployees, type Department, type Employee } from '../../lib/api';
 
@@ -26,7 +25,7 @@ export default function DepartmentsPage() {
 
   async function handleSubmit(event:FormEvent<HTMLFormElement>){event.preventDefault();setErrorMessage('');setSuccessMessage('');if(!departmentName.trim()){setErrorMessage('Department name is required.');return;}try{setIsSubmitting(true);const newDepartment=await createDepartment({name:departmentName.trim()});setDepartments((current)=>[newDepartment,...current]);setDepartmentName('');setSuccessMessage('Department created successfully.');}catch(error){setErrorMessage(error instanceof Error?error.message:'Failed to create department.');}finally{setIsSubmitting(false);}}
 
-  return <div className="space-y-7"><PositionSuggestions/>
+  return <div className="space-y-7">
     <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600">Organisation</p><h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Departments</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Shape your company structure and see how employees are distributed across teams.</p></div><button onClick={loadData} className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">Refresh</button></section>
 
     <section className="grid gap-4 sm:grid-cols-3"><Metric label="Departments" value={departments.length} note="Active organisational teams"/><Metric label="Employees assigned" value={employees.filter((e)=>e.departmentId).length} note="Across all departments"/><Metric label="Largest team" value={largest?.count ?? 0} note={largest?.name ?? 'No team data yet'}/></section>
