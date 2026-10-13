@@ -1216,9 +1216,9 @@ export class PayrollBatchesService {
         }
       }
       if (employee.paymentDetails.length === 0) {
-        blockedReasons.push({
+        warningReasons.push({
           code: 'MISSING_APPROVED_PAYMENT_DETAILS',
-          message: 'Employee has no approved payment details.',
+          message: 'Payroll can be calculated, but bank-file payment requires approved payment details for this employee.',
         });
       }
       if (employee.riskEvents.length > 0) {
@@ -1280,7 +1280,6 @@ export class PayrollBatchesService {
             'EMPLOYEE_NOT_ACTIVE',
             'MISSING_PAYROLL_PROFILE',
             'MISSING_COMPENSATION',
-            'MISSING_APPROVED_PAYMENT_DETAILS',
           ].includes(reason.code),
         );
         const warnings = employee.reasons.filter(

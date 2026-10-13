@@ -71,7 +71,7 @@ export class EntitlementsService {
         ),
       )
     )
-      ['registration', 'payrollSettings', 'openingPayroll'].forEach((k) =>
+      ['registration', 'payrollSettings'].forEach((k) =>
         relevant.add(k),
       );
     if (!relevant.size) return [];

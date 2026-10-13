@@ -155,9 +155,7 @@ export async function companyReadiness(db: PrismaService, orgId: string) {
       key: 'openingPayroll',
       ready:
         afterImport('OPENING_PAYROLL') &&
-        profiles >= activeEmployees &&
-        new Set(paymentDetails.map((p) => p.employeeId)).size >=
-          activeEmployees,
+        profiles > 0,
       required: payroll,
     },
   ];

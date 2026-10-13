@@ -18,6 +18,10 @@ export function PayrollSetup() {
     [payment, setPayment] = useState<api.PaymentDetail | null>(null);
   return (
     <>
+      <Card title="Payroll for selected employees">
+        <p className="text-sm">Configure payroll profiles only for employees you will process in DeluxHR. Other active employees can stay in HR and be paid manually. One configured employee is enough to complete the opening payroll review. Approved banking details are required for employees included in a bank-file payment, not for payroll calculation or payslip generation.</p>
+        <p className="text-sm">The review confirms the records you have configured; it does not certify that every employee is paid through DeluxHR. After a later import, review the intended payroll employees again.</p>
+      </Card>
       <Card title="Bank approval requirement">
         <p className="text-sm">
           During pending-company onboarding, a different active COMPANY_ADMIN in

@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { Feature, OrganizationStatus } from '@prisma/client';
+import { EntitlementsService } from '../../common/entitlements/entitlements.service';
 import { CustomerOnboardingService } from './customer-onboarding.service';
 import { PlatformAdminService } from '../platform-admin/platform-admin.service';
 const now = new Date();
@@ -90,6 +91,22 @@ describe('Customer onboarding go-live gate', () => {
       result.checklist.find((c) => c.key === 'openingPayroll'),
     ).toMatchObject({ required: true, ready: false });
   });
+  it('allows opening payroll for one configured employee among twenty active employees without company-wide banking coverage', async () => {
+    db.employee.count.mockImplementation(({ where }: any) => where.status === 'ACTIVE' ? 20 : 0);
+    db.employeePayrollProfile.count.mockResolvedValue(1);
+    db.employeePaymentDetail.findMany.mockResolvedValue([]);
+    const result = await service.readiness('org-1');
+    expect(result.checklist.find(c => c.key === 'openingPayroll')).toMatchObject({ready:true});
+    expect(result.counts.activeEmployees).toBe(20);
+    expect(result.counts.payrollProfiles).toBe(1);
+    expect(result.counts.approvedPaymentDetails).toBe(0);
+    expect(result.ready).toBe(true);
+  });
+  it('still requires the opening payroll review after an import', async () => {
+    db.employee.findFirst.mockResolvedValue({createdAt:new Date(now.getTime()+60000)});
+    const result = await service.readiness('org-1');
+    expect(result.checklist.find(c=>c.key==='openingPayroll')?.ready).toBe(false);
+  });
   it('invalidates balance confirmations made before a later employee import', async () => {
     db.employee.findFirst.mockResolvedValue({
       createdAt: new Date(now.getTime() + 60000),
@@ -98,6 +115,18 @@ describe('Customer onboarding go-live gate', () => {
     expect(result.checklist.find((c) => c.key === 'openingLeave')?.ready).toBe(
       false,
     );
+  });
+  it('does not block payroll services on company-wide opening coverage', async () => {
+    const org = organization(); org.onboardingConfirmations = [];
+    db.organization.findUnique.mockResolvedValue(org);
+    db.employeePayrollProfile.count.mockResolvedValue(0);
+    db.employeePaymentDetail.findMany.mockResolvedValue([]);
+    expect(await new EntitlementsService(db).incompleteSetup('org-1', [Feature.PAYROLL, Feature.PAYSLIPS, Feature.EARLY_PAY])).toEqual([]);
+  });
+  it('still blocks payroll services without registration and payroll settings', async () => {
+    const org = organization(); org.registrationNumber = ''; (org as any).payrollSettings = null;
+    db.organization.findUnique.mockResolvedValue(org);
+    expect(await new EntitlementsService(db).incompleteSetup('org-1', [Feature.PAYROLL])).toEqual(expect.arrayContaining(['registration', 'payrollSettings']));
   });
   it('blocks platform activation while readiness has missing steps', async () => {
     const platform = new PlatformAdminService(
