@@ -1,11 +1,12 @@
 "use client";
 import Link from 'next/link';
+import { UnsavedFormGuard } from './unsaved-form-guard';
 import {WorkspaceAccessProvider} from './workspace-access';
 import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { AppShell } from "./app-shell";
 import { PlatformShell } from "../platform-admin/platform-shell";
-import { getUser, homeForRole, logout } from "../../lib/auth";
+import { getUser, getToken, homeForRole, logout } from "../../lib/auth";
 import { setupIdentity } from "../../lib/customer-onboarding-api";
 const pendingSetupRoutes=["/onboarding","/onboarding/preferences","/employee-administration","/department-setup","/company-documents","/attendance-setup","/leave-setup","/payroll-setup","/employee-banking","/company-banking"];
 const authRoutes = [
@@ -24,6 +25,8 @@ export function RootShell({ children }: { children: ReactNode }) {
     [pending, setPending] = useState(false),
     [error, setError] = useState(""),
     [retry, setRetry] = useState(0);
+  const publicRoute = authRoutes.includes(pathname);
+  const sessionToken = getToken();
   const platformRoute =
     pathname === "/platform-admin" || pathname.startsWith("/platform-admin/");
   useEffect(() => {
@@ -31,9 +34,10 @@ export function RootShell({ children }: { children: ReactNode }) {
     const user = getUser();
     setRole(user?.role ?? null);
     setMounted(false);
+
     setError("");
     async function check() {
-      if (authRoutes.includes(pathname) || platformRoute) {
+      if (publicRoute || platformRoute) {
         if (live) setMounted(true);
         return;
       }
@@ -53,8 +57,7 @@ export function RootShell({ children }: { children: ReactNode }) {
             current.role === "COMPANY_ADMIN" &&
             current.organization?.status === "PENDING";
           setPending(setupOnly);
-          if (setupOnly && !pendingSetupRoutes.includes(pathname))
-            router.replace("/onboarding");
+
         } catch (e) {
           if (live)
             setError(
@@ -67,10 +70,16 @@ export function RootShell({ children }: { children: ReactNode }) {
       if (live) setMounted(true);
     }
     void check();
+    const onFocus = () => { void check(); };
+    window.addEventListener("focus", onFocus);
     return () => {
+      window.removeEventListener("focus", onFocus);
       live = false;
     };
-  }, [pathname, platformRoute, router, retry]);
+  }, [publicRoute, platformRoute, sessionToken, router, retry]);
+  useEffect(() => {
+    if (mounted && pending && !publicRoute && !platformRoute && !pendingSetupRoutes.includes(pathname)) router.replace("/onboarding");
+  }, [mounted, pending, publicRoute, platformRoute, pathname, router]);
   if (authRoutes.includes(pathname)) return <>{children}</>;
   if (platformRoute) return <PlatformShell>{children}</PlatformShell>;
   if (!mounted || homeForRole(role ?? undefined) === "/platform-admin")
@@ -96,7 +105,7 @@ export function RootShell({ children }: { children: ReactNode }) {
     );
   if (pending)
     return pendingSetupRoutes.includes(pathname) ? (
-      <WorkspaceAccessProvider><main className="mx-auto max-w-[1400px] space-y-6 p-4 md:p-8"><p className="rounded-xl bg-amber-50 p-3 text-sm">Company onboarding is pending. Complete setup in each feature; payroll processing starts after activation. <Link href="/onboarding" className="underline">Company Setup checklist</Link></p>
+      <WorkspaceAccessProvider><UnsavedFormGuard/><main className="mx-auto max-w-[1400px] space-y-6 p-4 md:p-8"><p className="rounded-xl bg-amber-50 p-3 text-sm">Company onboarding is pending. Complete setup in each feature; payroll processing starts after activation. <Link href="/onboarding" className="underline">Company Setup checklist</Link></p>
         {children}
       </main></WorkspaceAccessProvider>
     ) : (

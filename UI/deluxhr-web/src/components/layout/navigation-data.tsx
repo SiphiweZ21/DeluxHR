@@ -58,6 +58,11 @@ export const navGroups = [
         "icon": "clock"
       },
       {
+        "label": "Site Assignments",
+        "href": "/attendance-sites",
+        "icon": "building"
+      },
+      {
         "label": "Shifts & Schedules",
         "href": "/shifts",
         "icon": "calendar"

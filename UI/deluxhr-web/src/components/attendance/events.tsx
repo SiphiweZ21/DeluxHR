@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
+import { usePagePreference } from '../../lib/use-page-preference';
 import { getAttendanceEvents, type AttendanceEventPage } from "../../lib/api";
 export function AttendanceEvents() {
-  const [page, setPage] = useState(1),
+  const [page, setPage] = usePagePreference("attendance", "events-page", 1),
     [refresh, setRefresh] = useState(0);
   const [data, setData] = useState<AttendanceEventPage | null>(null),
     [busy, setBusy] = useState(true),

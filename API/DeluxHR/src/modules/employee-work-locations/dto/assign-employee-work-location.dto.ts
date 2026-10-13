@@ -1,9 +1,4 @@
-import {
-  IsBoolean,
-  IsISO8601,
-  IsOptional,
-  IsUUID,
-} from 'class-validator';
+import { IsBoolean, IsISO8601, IsOptional, IsUUID } from 'class-validator';
 
 export class AssignEmployeeWorkLocationDto {
   @IsUUID()
@@ -16,4 +11,8 @@ export class AssignEmployeeWorkLocationDto {
   @IsOptional()
   @IsISO8601()
   effectiveFrom?: string;
+
+  @IsOptional()
+  @IsISO8601()
+  effectiveTo?: string;
 }

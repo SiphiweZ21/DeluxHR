@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -19,15 +20,11 @@ import { RequireFeatures } from '../../common/entitlements/require-features.deco
 import { PermissionsGuard } from '../../common/access/permissions.guard';
 import { RequirePermissions } from '../../common/access/require-permissions.decorator';
 
+import { EndEmployeeWorkLocationDto } from './dto/end-employee-work-location.dto';
 import { AssignEmployeeWorkLocationDto } from './dto/assign-employee-work-location.dto';
 import { EmployeeWorkLocationsService } from './employee-work-locations.service';
 
-@UseGuards(
-  JwtAuthGuard,
-  TenantAccessGuard,
-  FeaturesGuard,
-  PermissionsGuard,
-)
+@UseGuards(JwtAuthGuard, TenantAccessGuard, FeaturesGuard, PermissionsGuard)
 @RequireFeatures(Feature.ATTENDANCE)
 @Controller('employees/:employeeId/work-locations')
 export class EmployeeWorkLocationsController {
@@ -46,6 +43,23 @@ export class EmployeeWorkLocationsController {
       user.organizationId,
       employeeId,
       dto,
+      user,
+    );
+  }
+
+  @Patch(':assignmentId/end')
+  @RequirePermissions(Permission.MANAGE_ATTENDANCE)
+  end(
+    @Param('employeeId') employeeId: string,
+    @Param('assignmentId') assignmentId: string,
+    @Body() dto: EndEmployeeWorkLocationDto,
+    @CurrentTenantUser() user: TenantJwtUser,
+  ) {
+    return this.employeeWorkLocationsService.end(
+      user.organizationId,
+      employeeId,
+      assignmentId,
+      dto.effectiveTo,
       user,
     );
   }

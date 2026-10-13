@@ -88,6 +88,7 @@ export function SetupForm({
       <p className="mb-4 text-sm text-slate-500">{description}</p>
       <Notice error={action.error} message={action.message} />
       <form
+        data-unsaved-form
         className="grid gap-4 md:grid-cols-2"
         onSubmit={(e) => {
           e.preventDefault();
@@ -108,6 +109,7 @@ export function SetupForm({
                   `Complete required fields: ${missing.map((f) => f.label.replace(/ \*$/, "")).join(", ")}.`,
                 );
               await save(data);
+              form.dispatchEvent(new Event("deluxhr:saved", { bubbles: true }));
               if (reset) form.reset();
             } finally {
               for (const field of Array.from(

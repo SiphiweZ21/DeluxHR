@@ -1,5 +1,7 @@
 "use client";
 
+import Link from 'next/link';
+import { usePagePreference } from '../../lib/use-page-preference';
 import { AttendanceEvents } from "../../components/attendance/events";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -32,11 +34,11 @@ function durationHours(record: AttendanceRecord) {
 export default function AttendancePage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<
+  const [selectedEmployeeId, setSelectedEmployeeId] = usePagePreference("attendance", "employee", "");
+  const [search, setSearch] = usePagePreference("attendance", "search", "");
+  const [statusFilter, setStatusFilter] = usePagePreference<
     "ALL" | "OPEN" | "COMPLETED"
-  >("ALL");
+  >("attendance", "status", "ALL");
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -95,8 +97,8 @@ export default function AttendancePage() {
       const employeeList = Array.isArray(employeeData) ? employeeData : [];
       setEmployees(employeeList);
       setRecords(Array.isArray(attendanceData) ? attendanceData : []);
-      if (!selectedEmployeeId && employeeList.length > 0)
-        setSelectedEmployeeId(employeeList[0].id);
+      if (employeeList.length > 0)
+        setSelectedEmployeeId(current => employeeList.some(e => e.id === current) ? current : employeeList[0].id);
     } catch (error) {
       setEmployees([]);
       setRecords([]);
@@ -180,6 +182,7 @@ export default function AttendancePage() {
         </div>
       </div>
 
+      <div className="flex flex-wrap gap-3"><Link className="rounded-lg border bg-white px-4 py-2 text-sm font-semibold text-indigo-700" href="/attendance-sites">Assign employees to sites</Link><Link className="rounded-lg border bg-white px-4 py-2 text-sm font-semibold text-indigo-700" href="/shifts">Assign shifts &amp; schedules</Link></div>
       <AttendanceEvents />
       <p className="text-sm text-slate-500">
         The summary and clock controls below show web attendance sessions.
