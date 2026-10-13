@@ -15,6 +15,7 @@ import { EntitlementsModule } from './common/entitlements/entitlements.module';
 
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { DepartmentsModule } from './modules/departments/departments.module';
+import { EmployeeCompensationChangesModule } from './modules/employee-compensation-changes/employee-compensation-changes.module';
 import { EmployeesModule } from './modules/employees/employees.module';
 import { EmployeeDocumentsModule } from './modules/employee-documents/employee-documents.module';
 import { AuditModule } from './modules/audit/audit.module';
@@ -79,6 +80,7 @@ import { AttendanceCorrectionsModule } from './modules/attendance-corrections/at
     OrganizationsModule,
     DepartmentsModule,
     EmployeesModule,
+    EmployeeCompensationChangesModule,
     EmployeeDocumentsModule,
     AuditModule,
     LeaveTypesModule,
